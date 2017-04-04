@@ -1,0 +1,97 @@
+---
+title: "Basket Analysis"
+output: html_notebook
+---
+```{r}
+library(plyr)
+library(data.table)
+library(dplyr)
+library(arules)
+library(arulesViz)
+library(tidyr)
+library(ggplot2)
+library(magrittr)
+
+```
+
+```{r}
+BasketData<-read.csv("Data/BasketData.csv")
+colnames(BasketData)<-c("TransactionID", "ClassDesc", "DeptDesc", "Brand", "Units")
+BasketData$Units<-as.numeric(gsub(",", "", as.character(BasketData$Units)))
+```
+
+```{r}
+#Reshape Data
+#We want Red Bull at the Brand Level
+RedBull<-filter(BasketData, Brand=="RED BULL")
+
+#Subtract it from rest of data set, so when we consolidate to class/dept level for remainder it isn't double counted
+BasketData2<-filter(BasketData, Brand!="RED BULL")
+BasketData2$Desc<-paste(BasketData2$DeptDesc)
+
+BasketSummary<-group_by(BasketData2, TransactionID, Desc) %>% summarise(Present=1)
+
+
+RedBull$Desc<-"RedBull"
+BasketSummary2<-group_by(RedBull, TransactionID, Desc) %>% summarise(Present=1)
+
+#Vertical combination
+BasketSummary<-rbind(BasketSummary, BasketSummary2)
+
+
+#Make the table wide and not long
+#one column per "present"
+SummaryWide<-spread(BasketSummary, Desc, Present)
+SummaryWide$TransactionID<-as.character(SummaryWide$TransactionID)
+```
+
+
+###Everything Above is rebuild of the dataset
+###Everything below is part of the algorithm construction
+###It's ugly and I haven't built it out entirely
+http://michael.hahsler.net/research/arules_RUG_2015/demo/
+
+
+```{r}
+SummaryWide2<-as.data.frame(SummaryWide[c(2:26)])
+SummaryWide3<-as.data.frame(colwise(as.logical)(SummaryWide2))
+trans<-as(SummaryWide3, "transactions")
+summary(trans)
+colnames(trans)
+```
+
+
+```{r}
+itemFrequencyPlot(trans)
+```
+
+```{r}
+RBBaskets<-subset(trans, items %in% "RedBull")
+itemFrequency(RBBaskets)
+
+```
+
+```{r fig.height=8, fig.width=8}
+#mine associations
+itemsets<-apriori(trans, parameter = list(target="frequent", supp=0.01, minlen=1))
+inspect(head(sort(itemsets), n=100))
+
+
+quality(itemsets)$lift <- interestMeasure(itemsets, measure="lift", trans = trans)
+inspect(head(sort(itemsets, by="lift"), n=100))
+
+
+plot(head(sort(itemsets, by = "lift"), n=50), method = "graph", control=list(cex=.8))
+
+r <- apriori(trans, parameter = list(supp=0.0001, maxlen=5))
+inspect((r, by="lift"))
+plot(r)
+
+r_RB<-subset(r, subset=items %in% "RedBull")
+
+itemFrequencyPlot(items(r_RB), topN=20)
+
+plot(head(sort(r_RB, by="lift"), 50),
+  method="graph", control=list(cex=.7))
+
+```
