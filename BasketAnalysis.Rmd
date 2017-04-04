@@ -20,6 +20,13 @@ colnames(BasketData)<-c("TransactionID", "ClassDesc", "DeptDesc", "Brand", "Unit
 BasketData$Units<-as.numeric(gsub(",", "", as.character(BasketData$Units)))
 ```
 
+Simple Data dictionary of the original file:
+TransactionID: corresponds to a single transaction in the store. One cash register receipt.
+ClassDesc: Description of the product's class.  This is a high level category the product bought falls into.
+DeptDesc: This is a subset of class.  
+Brand: Product's brand name as created in the item master.
+Units: Units sold in the current transaction.
+
 ```{r}
 #Reshape Data
 #We want Red Bull at the Brand Level
@@ -45,6 +52,8 @@ SummaryWide<-spread(BasketSummary, Desc, Present)
 SummaryWide$TransactionID<-as.character(SummaryWide$TransactionID)
 ```
 
+
+At this point we are working at a "Product Class" (with the exception of one brand) level - but I'm going to make some modifications in the code above.  Data table will remain the same in structure, but I'm going to drop some product classes from the data set and produce some of the product classes at the Department (subset of class) level.  There's too many Departments to work at that level, and probably not useful for this analysis really.  But Candy and Snacks is really large and some of the most useful categories are subsets of it...so I'll pull those out.
 
 ###Everything Above is rebuild of the dataset
 ###Everything below is part of the algorithm construction
