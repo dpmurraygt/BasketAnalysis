@@ -74,11 +74,14 @@ colnames(trans)
 itemFrequencyPlot(trans)
 ```
 
+I really want to target the Red Bull part for obvious reasons.
+
 ```{r}
 RBBaskets<-subset(trans, items %in% "RedBull")
 itemFrequency(RBBaskets)
 
 ```
+
 
 ```{r fig.height=8, fig.width=8}
 #mine associations
