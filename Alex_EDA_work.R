@@ -1,5 +1,6 @@
 
 library(data.table)
+library(ggplot2)
 
 # Read in the data for the project
 BasketData<-read.csv("Data/BasketData.csv")
@@ -53,9 +54,18 @@ length(unique(df_analysis_redbull$TransactionID)) # 15732 transactions have redb
 length(unique(BasketData$TransactionID)) # 2928914
 
 head(df_analysis_redbull)
-# interesting that this is in the noncarbonated from the looks of things...let's make sure this is the only class
-unique(df_analysis_redbull$ClassDesc)
-# this seems really odd...
+# interesting that this is in the noncarbonated from the looks of things.
+# there are not other classes, so this must be the class it is placed in.
+
+# how many redbulls is someone purchasing on average?
+mean(df_analysis_redbull$Units) # looks like about 1.33 units per transaction
+max(df_analysis_redbull$Units)# dang!  14
+min(df_analysis_redbull$Units) # -2 ? must include all refunded transactions?
+
+# let's look at a distribution
+
+qplot(Units, data = df_analysis_redbull, geom = 'histogram')
+# the overwhelming majority of transactions occur 1 can at a time
 
 
 # what percent of transactions contain redbull?
@@ -63,7 +73,7 @@ unique(df_analysis_redbull$ClassDesc)
 length(unique(df_analysis_redbull$TransactionID))/
   length(unique(BasketData$TransactionID)) # looks like about 0.5% of all transactions have a redbull
 
-# that's nice, but what does the Redbull share look like? Need to see of the 
+# that's nice, but what does the Redbull share look like? Need to see of the candy and snacks trans and non-carb
 
 
 # average cans purchased?
