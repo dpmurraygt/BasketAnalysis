@@ -1,6 +1,7 @@
 
 library(data.table)
 library(ggplot2)
+library(sqldf)
 
 # Read in the data for the project
 BasketData<-read.csv("Data/BasketData.csv")
@@ -75,5 +76,43 @@ length(unique(df_analysis_redbull$TransactionID))/
 
 # that's nice, but what does the Redbull share look like? Need to see of the candy and snacks trans and non-carb
 
+length(unique(df_analysis_redbull$TransactionID)) # 15732 transactions with redbull
 
-# average cans purchased?
+length(unique(BasketData$TransactionID[BasketData$DeptDesc=='CANDY & SNACKS'])) # 1,447,064 with candy or snacks
+length(unique(BasketData$TransactionID)) #2,928,914 total transactions
+
+length(unique(BasketData$TransactionID[BasketData$DeptDesc=='CANDY & SNACKS']))/length(unique(BasketData$TransactionID))
+# wow!  50% of all transactions contain candy or snacks
+
+length(unique(df_analysis_redbull$TransactionID))/length(unique(BasketData$TransactionID[BasketData$DeptDesc=='CANDY & SNACKS']))
+# 1.1% of candy or snack transactions contain redbull
+
+
+# I wonder what the most popular things are that are purchased in redbull transactions beside redbull?
+
+# get the redbull transactions items without redbull in the dataset
+redbull_plus_snack_df<-sqldf('select TransactionID, ClassDesc, DeptDesc, Brand, Units  From BasketData Where 
+      TransactionID in (select distinct TransactionID From BasketData Where Brand = "RED BULL")
+                             And Brand<> "RED BULL"')
+
+length(unique(redbull_plus_snack_df$TransactionID)) 
+# alright, we know that 15732 transactions contained redbull; However, only 13058 contained other products
+# looking deeper into those products
+
+# what Brands are most often purchased with RedBull?
+  # frequency
+  agg_df<- sqldf('Select Brand, Count(*) As trans, Sum(Units) As units_purch  From redbull_plus_snack_df Group By 1 Order By 3')
+  
+  
+  barplot(tail(agg_df$units_purch,20), names.arg = tail(agg_df$Brand,20), cex.names = 0.7, las = 2 )
+
+# number of units
+
+# How many units do these transactions contain?
+
+# Which department do they come from?
+
+# which classes are most popular?
+
+# Of the snacks and candy classes which do people purchase together?
+
