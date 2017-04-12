@@ -3,10 +3,19 @@ library(data.table)
 library(ggplot2)
 library(sqldf)
 
+packages<- c ("data.table", "ggplot2", "sqldf")
+
+sapply(packages,library, character.only = TRUE)
+
 # Read in the data for the project
 BasketData<-read.csv("Data/BasketData.csv")
 colnames(BasketData)<-c("TransactionID", "ClassDesc", "DeptDesc", "Brand", "Units")
 BasketData$Units<-as.numeric(gsub(",", "", as.character(BasketData$Units)))
+
+# remove the negatives from the overall DF
+
+BasketData<- BasketData[!BasketData$Units <=0,]
+
 
 # Since our objective is to figure out market baskets that include redbull, let's create a dataset that only includes rebull
 # but in a format that we can play with for data visualization first
@@ -20,20 +29,25 @@ str(BasketData)
 
 # how many unique brands?
 length(unique(BasketData$Brand))
-# looks like 1963 unique brands in the dataset
+# looks like 1959 unique brands in the dataset
 
 # how many unique department descriptions? # show bargraph count of these items but products purchased
 length(unique(BasketData$DeptDesc)) # 25
 
 # how many unique classes?
-length(unique(BasketData$ClassDesc)) # 747 classes
+length(unique(BasketData$ClassDesc)) # 746 classes
 
 # which ones are most popular?
 dt <- data.table(BasketData)
-head(dt[,sum(Units),by = Brand],20)
-# it looks like DG body is the most popular item here.  So...the dataset looks like it is Dollar General
-# WE also see that the 12th most purchased product has no brand
-# let's look at these values to see if there is an issue here
+dt <- dt[,sum(Units),by = Brand]
+dt <- dt[order(V1)]
+tail(dt,20)
+# it looks like the store brand, clover valley is the most popular, to no surprise
+# we also see that unbranded and DG HOME are some of the more popular products as well.  
+# Additionally, we see that the blank records are the second most popular.  WE should probalby delete those
+# least popular?
+head(dt,20)
+# dude...no way funfetti is not that popular!!!
 
 # looking at blanks
 df_analysis<- BasketData[BasketData$Brand == "",]
@@ -46,6 +60,9 @@ dfa_dt = data.table(df_analysis)
 dfa_dt[,sum(Units),by = DeptDesc]
 # it looks like most transactions without brand are candy.  We dont necessarily want to filter these out since
 # we will be looking at the data at a much higher level for the RedBull market basket.
+
+
+
 
 # what portion of transactions include redbull?
 
@@ -62,6 +79,12 @@ head(df_analysis_redbull)
 mean(df_analysis_redbull$Units) # looks like about 1.33 units per transaction
 max(df_analysis_redbull$Units)# dang!  14
 min(df_analysis_redbull$Units) # -2 ? must include all refunded transactions?
+
+# we will drop those out of the dataset
+
+df_analysis_redbull<- df_analysis_redbull[!df_analysis_redbull$Units <=0,]
+
+
 
 # let's look at a distribution
 
