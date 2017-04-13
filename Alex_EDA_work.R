@@ -9,7 +9,11 @@ BasketData<-read.csv("Data/BasketData.csv")
 colnames(BasketData)<-c("TransactionID", "ClassDesc", "DeptDesc", "Brand", "Units")
 BasketData$Units<-as.numeric(gsub(",", "", as.character(BasketData$Units)))
 
-# Initial EDA
+
+#################################
+# Initial EDA -validation #####
+###############################
+
 
 # remove the negatives from the overall DF
 
@@ -67,18 +71,18 @@ dfa_dt<- dfa_dt[order(-V1),]
 print(dfa_dt)
 
 ############################################
-##### MAIN FULTERING OF DATASET ############
+##### MAIN FiLTERING OF DATASET ############
 ############################################
-# The first thing we will do is reread in the dataset
+# The first thing we will do is reread in the dataset and set everything up
 
 BasketData<-read.csv("Data/BasketData.csv")
 colnames(BasketData)<-c("TransactionID", "ClassDesc", "DeptDesc", "Brand", "Units")
 BasketData$Units<-as.numeric(gsub(",", "", as.character(BasketData$Units)))
 
 
-# let's take out hte transactions that contain negative values
+# let's take out the transactions that contain negative values
   # notice that we are taking out distinct transactions and not just those items. 
-  # this ensures that we get whole itemsets
+  # this ensures that we get whole itemsets that are not incomplete
 BasketData<- sqldf('Select TransactionID, ClassDesc, DeptDesc, Brand, Units
                     From BasketData Where TransactionID Not In  
                       (Select Distinct
@@ -88,14 +92,23 @@ BasketData<- sqldf('Select TransactionID, ClassDesc, DeptDesc, Brand, Units
                         Units<=0)'
                       )
 
+
+
 # ok, that looks like it worked.  Now, we need to see what removal of the transactions without any brand looks like
 
+BasketData<- sqldf('Select TransactionID, ClassDesc, DeptDesc, Brand, Units
+                    From BasketData Where TransactionID Not In  
+                      (Select Distinct
+                        TransactionID
+                        From BasketData
+                        Where 
+                        Brand="")')
 
 
 
 
 
-#   First, take out the transactions where we have no brand #
+
 
 
 ##########################
@@ -105,23 +118,24 @@ BasketData<- sqldf('Select TransactionID, ClassDesc, DeptDesc, Brand, Units
 # what portion of transactions include redbull?
 
 df_analysis_redbull<- BasketData[BasketData$Brand == "RED BULL",]
-r
-length(unique(df_analysis_redbull$TransactionID)) # 15732 transactions have redbull
-length(unique(BasketData$TransactionID)) # 2928914
+
+length(unique(df_analysis_redbull$TransactionID)) # 14046 transactions have redbull
+length(unique(BasketData$TransactionID)) # 2493458
 
 head(df_analysis_redbull)
+unique(df_analysis_redbull$ClassDesc)
 # interesting that this is in the noncarbonated from the looks of things.
 # there are not other classes, so this must be the class it is placed in.
 
 # how many redbulls is someone purchasing on average?
-mean(df_analysis_redbull$Units) # looks like about 1.33 units per transaction
+mean(df_analysis_redbull$Units) # looks like about 1.32 units per transaction
 max(df_analysis_redbull$Units)# dang!  14
-min(df_analysis_redbull$Units) # -2 ? must include all refunded transactions?
+min(df_analysis_redbull$Units) # -2 ? must include all refunded transactions? - Fixed
 
 # we will drop those out of the dataset
 
-df_analysis_redbull<- df_analysis_redbull[!df_analysis_redbull$Units <=0,]
-
+#df_analysis_redbull<- df_analysis_redbull[!df_analysis_redbull$Units <=0,]
+#### No lOnger needed
 
 
 # let's look at a distribution
@@ -133,21 +147,48 @@ qplot(Units, data = df_analysis_redbull, geom = 'histogram')
 # what percent of transactions contain redbull?
 
 length(unique(df_analysis_redbull$TransactionID))/
-  length(unique(BasketData$TransactionID)) # looks like about 0.5% of all transactions have a redbull
+  length(unique(BasketData$TransactionID)) # looks like about 0.56% of all transactions have a redbull
 
 # that's nice, but what does the Redbull share look like? Need to see of the candy and snacks trans and non-carb
 
-length(unique(df_analysis_redbull$TransactionID)) # 15732 transactions with redbull
+length(unique(df_analysis_redbull$TransactionID))# 14046 transactions with redbull
 
-length(unique(BasketData$TransactionID[BasketData$DeptDesc=='CANDY & SNACKS'])) # 1,447,064 with candy or snacks
-length(unique(BasketData$TransactionID)) #2,928,914 total transactions
+length(unique(BasketData$TransactionID[BasketData$DeptDesc=='CANDY & SNACKS'])) # 1,217,781 with candy or snacks
+length(unique(BasketData$TransactionID)) #2,493,458 total transactions
 
 length(unique(BasketData$TransactionID[BasketData$DeptDesc=='CANDY & SNACKS']))/length(unique(BasketData$TransactionID))
-# wow!  50% of all transactions contain candy or snacks
+# wow!  49% of all transactions contain candy or snacks
 
 length(unique(df_analysis_redbull$TransactionID))/length(unique(BasketData$TransactionID[BasketData$DeptDesc=='CANDY & SNACKS']))
 # 1.1% of candy or snack transactions contain redbull
 
+# What about competitors?
+df_analysis_monster<- BasketData[BasketData$Brand == "MONSTER",]
+
+
+length(unique(df_analysis_monster$TransactionID)) # 25,338 transactions have Monster
+
+
+# how many redbulls is someone purchasing on average?
+mean(df_analysis_monster$Units) # looks like about 1.32 units per transaction
+max(df_analysis_monster$Units)# dang!  14
+min(df_analysis_monster$Units) # -2 ? must include all refunded transactions? - Fixed
+
+# could be skewed by the 47 can dude
+median(df_analysis_monster$Units)
+median(df_analysis_redbull$Units)
+  # ok, that was pointless
+
+# let's look at side by side boxplots
+par(mfrow = c(1,2))
+
+# create the dataframe
+
+
+
+boxplot()
+
+# How many items are purchased in each redbull transaction?
 
 # I wonder what the most popular things are that are purchased in redbull transactions beside redbull?
 
@@ -157,7 +198,7 @@ redbull_plus_snack_df<-sqldf('select TransactionID, ClassDesc, DeptDesc, Brand, 
                              And Brand<> "RED BULL"')
 
 length(unique(redbull_plus_snack_df$TransactionID)) 
-# alright, we know that 15732 transactions contained redbull; However, only 13058 contained other products
+# alright, we know that 14046 transactions contained redbull; However, only 11,375 contained other products
 # looking deeper into those products
 
 # what Brands are most often purchased with RedBull?
@@ -176,4 +217,10 @@ length(unique(redbull_plus_snack_df$TransactionID))
 # which classes are most popular?
 
 # Of the snacks and candy classes which do people purchase together?
+  
+# how many items are in the typical Redbull transaction?
+  
+# How many items are in the typical transaction?
+  
+  
 
