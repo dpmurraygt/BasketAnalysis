@@ -1,7 +1,4 @@
 
-library(data.table)
-library(ggplot2)
-library(sqldf)
 
 packages<- c ("data.table", "ggplot2", "sqldf")
 
@@ -12,13 +9,14 @@ BasketData<-read.csv("Data/BasketData.csv")
 colnames(BasketData)<-c("TransactionID", "ClassDesc", "DeptDesc", "Brand", "Units")
 BasketData$Units<-as.numeric(gsub(",", "", as.character(BasketData$Units)))
 
+# Initial EDA
+
 # remove the negatives from the overall DF
 
 BasketData<- BasketData[!BasketData$Units <=0,]
 
 
-# Since our objective is to figure out market baskets that include redbull, let's create a dataset that only includes rebull
-# but in a format that we can play with for data visualization first
+
 
 # print colnames
 colnames(BasketData)
@@ -46,7 +44,7 @@ tail(dt,20)
 # we also see that unbranded and DG HOME are some of the more popular products as well.  
 # Additionally, we see that the blank records are the second most popular.  WE should probalby delete those
 # least popular?
-head(dt,20)
+head(dt,40)
 # dude...no way funfetti is not that popular!!!
 
 # looking at blanks
@@ -56,18 +54,58 @@ df_analysis<- BasketData[BasketData$Brand == "",]
 # going up one level to get an idea of the breakdown
 length(unique(df_analysis$DeptDesc)) # looks like we have values from all departments with no brand
 
-dfa_dt = data.table(df_analysis)
-dfa_dt[,sum(Units),by = DeptDesc]
-# it looks like most transactions without brand are candy.  We dont necessarily want to filter these out since
-# we will be looking at the data at a much higher level for the RedBull market basket.
+dfa_dt <- data.table(df_analysis)
+dfa_dt <- dfa_dt[,sum(Units),by = DeptDesc]
+dfa_dt <- dfa_dt[order(-V1),]
+print(dfa_dt)
+# it looks like most transactions without brand are stationary
+# Stationary is the most "keyed in" item; 
+# in this case, we would probably want to filter, maybe we should look at the classes
+dfa_dt<- data.table(df_analysis)
+dfa_dt<- dfa_dt[,length(Units),by =ClassDesc]
+dfa_dt<- dfa_dt[order(-V1),]
+print(dfa_dt)
+
+############################################
+##### MAIN FULTERING OF DATASET ############
+############################################
+# The first thing we will do is reread in the dataset
+
+BasketData<-read.csv("Data/BasketData.csv")
+colnames(BasketData)<-c("TransactionID", "ClassDesc", "DeptDesc", "Brand", "Units")
+BasketData$Units<-as.numeric(gsub(",", "", as.character(BasketData$Units)))
+
+
+# let's take out hte transactions that contain negative values
+  # notice that we are taking out distinct transactions and not just those items. 
+  # this ensures that we get whole itemsets
+BasketData<- sqldf('Select TransactionID, ClassDesc, DeptDesc, Brand, Units
+                    From BasketData Where TransactionID Not In  
+                      (Select Distinct
+                        TransactionID
+                        From BasketData
+                        Where 
+                        Units<=0)'
+                      )
+
+# ok, that looks like it worked.  Now, we need to see what removal of the transactions without any brand looks like
 
 
 
+
+
+
+#   First, take out the transactions where we have no brand #
+
+
+##########################
+#### REDBULL ANALYSIS ####
+##########################
 
 # what portion of transactions include redbull?
 
 df_analysis_redbull<- BasketData[BasketData$Brand == "RED BULL",]
-
+r
 length(unique(df_analysis_redbull$TransactionID)) # 15732 transactions have redbull
 length(unique(BasketData$TransactionID)) # 2928914
 
