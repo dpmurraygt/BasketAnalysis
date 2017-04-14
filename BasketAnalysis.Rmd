@@ -1,5 +1,6 @@
 ---
-title: "Basket Analysis"
+title: "Association Rules Mining for RB Data"
+author: "Dennis Murray and Alex Deshowitz"
 output: html_notebook
 ---
 ```{r}

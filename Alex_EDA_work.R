@@ -89,8 +89,7 @@ BasketData<- sqldf('Select TransactionID, ClassDesc, DeptDesc, Brand, Units
                         TransactionID
                         From BasketData
                         Where 
-                        Units<=0)'
-                      )
+                        Units<=0)')
 
 
 
@@ -131,7 +130,7 @@ unique(df_analysis_redbull$ClassDesc)
 mean(df_analysis_redbull$Units) # looks like about 1.32 units per transaction
 max(df_analysis_redbull$Units)# dang!  14
 min(df_analysis_redbull$Units) # -2 ? must include all refunded transactions? - Fixed
-
+summary(df_analysis_redbull$Units)
 # we will drop those out of the dataset
 
 #df_analysis_redbull<- df_analysis_redbull[!df_analysis_redbull$Units <=0,]
@@ -183,14 +182,40 @@ median(df_analysis_redbull$Units)
 par(mfrow = c(1,2))
 
 # create the dataframe
+rb <- data.frame(rep('RedBull', length(unique(df_analysis_redbull$TransactionID))))
+df1<- cbind(rb, data.frame(df_analysis_redbull$Units))
+colnames(df1) = c('brand','units')
+
+mon <- data.frame(rep('Monster', length(unique(df_analysis_monster$TransactionID))))
+df2<- cbind(mon, data.frame(df_analysis_monster$Units))
+colnames(df2) = c('brand','units')
 
 
+df3<- rbind(df1,df2)
 
-boxplot()
+boxplot(units~brand, data = df3)
+
+# looks like 42 from Monster skews things a bit, let's filter it
+
+df3<- df3[df3$units<30,]
+
+boxplot(units~brand, data = df3)
+
+# ok, not the best representation of the data, but we can see that the realy average transaction is slightly higher for monster than RedBull
+
+# some more redbull analysis...
 
 # How many items are purchased in each redbull transaction?
 
-# I wonder what the most popular things are that are purchased in redbull transactions beside redbull?
+redbull_items_purchased<-sqldf('select avg(brands) As num_brands, avg(total_units) As avg_units From
+(select TransactionID,count(Distinct(Brand)) As brands,
+Sum(Units) AS total_units  From BasketData Where 
+      TransactionID in (select distinct TransactionID From BasketData Where Brand = "RED BULL") Group By 1)' )
+
+print(redbull_items_purchased)
+
+# the average basket with redbull items is about 5 different items and about 4 brands.  
+
 
 # get the redbull transactions items without redbull in the dataset
 redbull_plus_snack_df<-sqldf('select TransactionID, ClassDesc, DeptDesc, Brand, Units  From BasketData Where 
@@ -203,24 +228,102 @@ length(unique(redbull_plus_snack_df$TransactionID))
 
 # what Brands are most often purchased with RedBull?
   # frequency
-  agg_df<- sqldf('Select Brand, Count(*) As trans, Sum(Units) As units_purch  From redbull_plus_snack_df Group By 1 Order By 3')
+brand_df<- sqldf('Select Brand, Count(*) As trans, Sum(Units) As units_purch  From redbull_plus_snack_df Group By 1 Order By 3')
   
   
-  barplot(tail(agg_df$units_purch,20), names.arg = tail(agg_df$Brand,20), cex.names = 0.7, las = 2 )
+barplot(tail(brand_df$units_purch,20), names.arg = tail(brand_df$Brand,20), cex.names = 0.7, las = 2 )
 
-# number of units
 
-# How many units do these transactions contain?
 
 # Which department do they come from?
 
+department_df<- sqldf('Select DeptDesc, Count(*) As trans, Sum(Units) As units_purch  From redbull_plus_snack_df Group By 1 Order By 3')
+
+barplot(tail(department_df$units_purch,20), names.arg = tail(department_df$DeptDesc,20), cex.names = 0.7, las = 2 )
+
 # which classes are most popular?
 
-# Of the snacks and candy classes which do people purchase together?
+class_df<- sqldf('Select ClassDesc, Count(*) As trans, Sum(Units) As units_purch  From redbull_plus_snack_df Group By 1 Order By 3')
+
+barplot(tail(class_df$units_purch,20), names.arg = tail(class_df$ClassDesc,20), cex.names = 0.7, las = 2 )
+
+
+# which candy and snacks are most popular with Redbull
+  # df including all candy and snack items purchased with no redbull
+candy_snack_df<- sqldf('Select Brand, Count(*) As trans, Sum(Units) As units_purch  
+                      From redbull_plus_snack_df Where DeptDesc ="CANDY & SNACKS" Group By 1 Order By 3')
+
+barplot(tail(candy_snack_df$units_purch,20), names.arg = tail(candy_snack_df$Brand,20), cex.names = 0.7, las = 2 )
+
+
+
+# Let's look at the multi item transactions to see what the most purchased products are by bin
+
+
+# we will do this by brand for simplicity, so 2 brand purchases with redbull? what is the most popular? etc.
+
+
+redbull_brands_in_trans<-sqldf('select T1.TransactionID As TransactionID ,brands, ClassDesc, DeptDesc, Brand, Units  
+From BasketData As T1
+Inner Join ( Select TransactionID, Count(Distinct(Brand)) As brands From BasketData Group By 1) As T2
+On T1.TransactionID = T2.TransactionID
+Where T1.TransactionID in (select distinct TransactionID From BasketData Where Brand = "RED BULL")
+ 
+                               ')
   
-# how many items are in the typical Redbull transaction?
-  
-# How many items are in the typical transaction?
-  
-  
+# ok, now that we got the aggregation done, let's group by brands and produce the same graphs
+
+# 2 brand transactions (filter out RB)
+
+two_brand_trans<- sqldf('select brand, sum(Units) As units From redbull_brands_in_trans
+                        Where
+                        Brand <> "RED BULL"
+                        And brands = 2
+                        Group By 1
+                        Order By 2
+
+                        ')
+
+barplot(tail(two_brand_trans$units,20), names.arg = tail(two_brand_trans$Brand,20), cex.names = 0.7, las = 2 )
+
+# 3 brand transactions (filter out RB)
+
+three_brand_trans<- sqldf('select brand, sum(Units) As units From redbull_brands_in_trans
+                        Where
+                        Brand <> "RED BULL"
+                        And brands = 3
+                        Group By 1
+                        Order By 2
+                        
+                        ')
+
+barplot(tail(three_brand_trans$units,20), names.arg = tail(three_brand_trans$Brand,20), cex.names = 0.7, las = 2 )
+
+
+# 4 brand transactions (filter out RB)
+
+four_brand_trans<- sqldf('select brand, sum(Units) As units From redbull_brands_in_trans
+                          Where
+                          Brand <> "RED BULL"
+                          And brands = 4
+                          Group By 1
+                          Order By 2
+                          
+                          ')
+
+barplot(tail(four_brand_trans$units,20), names.arg = tail(four_brand_trans$Brand,20), cex.names = 0.7, las = 2 )
+
+# 5 brand transactions (filter out RB)
+
+five_brand_trans<- sqldf('select brand, sum(Units) As units From redbull_brands_in_trans
+                          Where
+                         Brand <> "RED BULL"
+                         And brands = 5
+                         Group By 1
+                         Order By 2
+                         
+                         ')
+
+barplot(tail(five_brand_trans$units,20), names.arg = tail(five_brand_trans$Brand,20), cex.names = 0.7, las = 2 )
+
 
