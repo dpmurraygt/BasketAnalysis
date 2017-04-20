@@ -1,0 +1,168 @@
+---
+title: "Basket Analysis"
+output: html_notebook
+---
+```{r}
+#Required Libraries
+library(plyr)
+library(data.table)
+library(dplyr)
+library(arules)
+library(arulesViz)
+library(tidyr)
+library(ggplot2)
+library(magrittr)
+library(Matrix)
+library(scales)
+```
+
+```{r}
+BasketData<-read.csv("Data/BasketData.csv")
+colnames(BasketData)<-c("TransactionID", "ClassDesc", "DeptDesc", "Brand", "Units")
+#Fix data that came with commas
+BasketData$Units<-as.numeric(gsub(",", "", as.character(BasketData$Units)))
+
+#Fix TransactionID to be non negative
+BasketData$TransactionID<-abs(BasketData$TransactionID)
+```
+
+Simple Data dictionary of the original file:
+TransactionID: corresponds to a single transaction in the store. One cash register receipt.
+ClassDesc: Description of the product's class.  This is a high level category the product bought falls into.
+DeptDesc: This is a subset of class.  
+Brand: Product's brand name as created in the item master.
+Units: Units sold in the current transaction.
+
+```{r}
+
+#Filter negative Unit Transactions
+#remove any transaction where some part of it is negative
+
+Negative<-unique(filter(BasketData, Units<0)) %>% group_by(TransactionID) %>% summarise()
+
+BasketData<-filter(BasketData, !TransactionID %in% Negative)
+
+length(filter(BasketData, Units<0))
+
+#Reshape Data
+#We want Red Bull at the Brand Level
+RedBull<-filter(BasketData, Brand=="RED BULL")
+RedBull$Desc<-"RedBull"
+
+#Subtract it from rest of data set, so when we consolidate to class/dept level for remainder it isn't double counted
+BasketData2<-filter(BasketData, Brand!="RED BULL" & DeptDesc!="CANDY & SNACKS")
+BasketData2$Desc<-paste(BasketData2$DeptDesc)
+
+#We want rest of Candy and Snacks at ClassDesc Level
+BasketData3<-filter(BasketData, Brand!="RED BULL" & DeptDesc=="CANDY & SNACKS")
+BasketData3$Desc<-paste(BasketData3$ClassDesc)
+
+
+#Make 3 tables - one for the RB items, rest of Beverage/Snack, and everything else in store
+BasketSummary<-group_by(BasketData2, TransactionID, Desc) %>% dplyr::summarise(Present=1)
+
+
+BasketSummary2<-group_by(RedBull, TransactionID, Desc) %>% summarise(Present=1)
+BasketSummary3<-group_by(BasketData3, TransactionID, Desc) %>% summarise(Present=1)
+
+
+#Vertical combination
+BasketSummary<-rbind(BasketSummary, BasketSummary2, BasketSummary3)
+
+rm("BasketSummary2", "BasketSummary3", "BasketData2", "BasketData3")
+
+length(unique(BasketSummary$Desc))
+#Overall Basket most frequent product Desc
+print(group_by(BasketSummary, Desc) %>% summarise(Count=length(unique(TransactionID))) %>% arrange(-Count))
+
+#write our progress out to a CSV file
+write.csv(BasketSummary, "BasketSummary.csv")
+
+#This moves the data from being a long data table to being a wide sparse matrix as required for the 
+#arules library to work
+SummaryWide<-read.transactions("BasketSummary.csv", format="single", sep=",", cols=c("TransactionID", "Desc"))
+
+
+```
+
+#I need to write a definition for the categories that we end up keeping, at least in the appendix just so we are clear on what's in what category.
+
+
+
+###Everything Above is rebuild of the dataset
+###Everything below is part of the algorithm construction
+###It's ugly and I haven't built it out entirely
+http://michael.hahsler.net/research/arules_RUG_2015/demo/
+
+
+```{r}
+
+summary(SummaryWide)
+colnames(SummaryWide)
+
+str(SummaryWide)
+
+```
+
+Steep drop off after 4 and 5 categories in terms of count of baskets with those items.  Probably will be useful in deciding max basket size of rules to mine for.
+
+
+```{r fig.width=8.5, fig.height=4}
+itemFrequencyPlot(SummaryWide, topN=15)
+```
+
+Food, Healthcare, Home Cleaning, Paper Products seem to be most frequent Items in Basket.
+
+I really want to target the Red Bull part for obvious reasons.
+
+```{r}
+RBBaskets<-subset(SummaryWide, items %in% "RedBull")
+RBFreq<-as.data.frame(itemFrequency(RBBaskets))
+RBFreq$Item<-row.names(RBFreq)
+
+RBFreq$Frequency<-comma(RBFreq$`itemFrequency(RBBaskets)`)
+RBFreq<-arrange(RBFreq, desc(Frequency))
+RBFreq
+```
+
+24% of Baskets with Red Bull also contained FOOD.
+18% of Baskets with Red Bull also contained PERISHABLES.
+17.6% of Baskets with Red Bull also had Dropship Carbonated Soft Drinks.
+
+
+```{r fig.height=8, fig.width=8}
+#mine associations
+itemsets<-apriori(SummaryWide, parameter = list(target="frequent", supp=0.001, minlen=1))
+inspect(head(sort(itemsets), n=50))
+
+
+quality(itemsets)$lift <- interestMeasure(itemsets, measure="lift", trans = SummaryWide)
+inspect(head(sort(itemsets, by="lift"), n=50))
+
+
+plot(head(sort(itemsets, by = "lift"), n=50), method = "graph", control=list(cex=.8))
+
+r <- apriori(SummaryWide, parameter = list(supp=0.00002, maxlen=5))
+inspect(head(sort(r, by="confidence"), n=50))
+plot(r)
+
+```
+
+```{r}
+#This is a subset of the rules to just show Red Bull related
+r_RB<-subset(r, subset=items %in% "RedBull")
+
+#r_RB<-subset(itemsets, subset=items %in% "RedBull")
+
+inspect((sort(r_RB, by="lift")))
+
+itemFrequencyPlot(items(r_RB), topN=20)
+
+plot(head(sort(r_RB, by="lift"), 20),
+  method="graph", control=list(cex=.7))
+
+```
+
+Low Support - about 50 transactions out of our 2MM set - but confidence is all >.8 and lift >1.
+
+Probably if we rearranged categories a little bit - maybe created more granularity in FOOD and consolidated some of the snack food (Crackers and Private Label Crackers) back together there could be some better insights.  Level of detail in the data is really important here.
