@@ -450,4 +450,267 @@ It looks like home products really jump up with 5 items.  We definitely see alot
 
 That being said, we would like a better way of associating these products together than simple visual analytics.  It would be really nice to be able to look at significant rules and baskets that occur very frequently as it is obviously very cumbersome to do with nearly 2000 brands.
 
+We will use a filtered dataframe to produce rules around just the purchases that include RedBull
+
+```{r}
+
+
+redbull_arules<-sqldf('select TransactionID, ClassDesc, DeptDesc, Brand, Units  From BasketData Where 
+                             TransactionID in (select distinct TransactionID From BasketData Where Brand = "RED BULL")
+                             ')
+
+
+
+```
+
+```{r}
+head(redbull_arules)
+
+
+```
+
+This is nice, but I am going to need to pair this particular dataset down a bit.  It might make sense to look at just the baskets for the departments that are most common in RedBull transactions.  Let's see what those are
+
+```{r}
+
+most_common_depts = sqldf('select deptdesc, count(*) As occurances From redbull_arules Where Brand <> "RED BULL" Group By 1 Order By 2 desc')
+
+
+
+```
+
+```{r}
+
+head(most_common_depts)
+
+```
+
+Most of the items that are purchases with redbull are candy and snacks, food, and perishables.  For our rules, let's just take a subset of the transactions that include these items in them to see if we can find anything that is of interest.
+
+```{r}
+
+redbull_arules <- sqldf('Select * From redbull_arules Where DeptDesc In ("CANDY & SNACKS","FOOD","PERISHABLES")')
+
+
+```
+
+
+```{r}
+print(summary(redbull_arules))
+
+#print(nrow(redbull_arules))
+
+
+```
+
+
+Ok, so we have substantially decreased the size of the original dataset.  However, we have really narrowed down the problem.  Let's see what we get.
+
+
+```{r}
+
+length(unique(redbull_arules$Brand))
+
+
+```
+
+
+Ok, we have 558 brands in this dataset.  While it would be nice to evaluate all of them, it probably makes sense to eliminate the ones that do not occur that frequently.  While, from a filtering perspective, we will only be creating partial transactions in this case, we will be looking at the transactions that have commonality with redbull in order to make the rules.  Therefore, this approach still has some validity.
+
+```{r}
+most_pop_brands <- sqldf('Select Brand, count(*) As occurances  From redbull_arules Where Brand <> "RED BULL" group by 1 Order By 2')
+
+
+barplot(tail(most_pop_brands$occurances,30), names.arg = tail(most_pop_brands$Brand,30), cex.names = 0.7, las = 2 , col = 'dark blue')
+
+
+```
+
+These look like really good brands that we might want to make some rules for with Redbull purchases...Now, we have to format the data appropriately
+
+First, filter for just these brands:
+
+```{r}
+
+redbull_arules<- sqldf('Select * From redbull_arules Where Brand In (Select Brand From (Select Brand, count(*) As occurances  From redbull_arules group by 1) base
+                     Where occurances >=156)')
+
+```
+
+```{r}
+
+length(unique(redbull_arules$Brand))
+
+```
+
+Now, we have isolated those top 30 brands that occur with Red Bull most often
+
+
+```{r}
+
+keepers<- c('TransactionID','Brand')
+
+redbull_arules <- redbull_arules[keepers]
+
+
+redbull_arules$present <- 1
+
+#redbull_arules_wide<- spread(redbull_arules, Brand, Present)
+
+summary(redbull_arules)
+
+redbull_arules<- sqldf('Select Distinct * From redbull_arules') # need to pull in only unique values for our transactions
+
+redbull_arules_wide<- spread(redbull_arules, Brand, present)
+
+
+```
+
+
+This is now the new dataframe that we will plug into our Apriori algorithm.  Let's just make sure everything makes sense
+
+```{r}
+print( nrow(redbull_arules_wide))
+
+```
+```{r}
+
+print( ncol(redbull_arules_wide))
+
+```
+
+We have narrowed this set down to 14,046 transactions and 32 columns (30 brands + redbull + transaction id = 32)
+
+```{r}
+
+summary(redbull_arules_wide)
+
+head(redbull_arules_wide)
+
+str(redbull_arules_wide)
+
+# need to binarize the dataset
+
+redbull_arules_wide<-as.data.frame(colwise(as.logical)(redbull_arules_wide))
+
+redbull_arules_wide_2<- as.data.frame(redbull_arules_wide[,-1]) # remove transaction ID
+
+trans<-as(redbull_arules_wide_2, "transactions") # use this to contain redbull
+
+redbull_arules_wide_3<- as.data.frame(redbull_arules_wide_2[,-which(colnames(redbull_arules_wide_2)=='RED BULL')]) # remove transaction ID and redbull
+
+trans_2 <- as(redbull_arules_wide_3, "transactions") # use this for analysis without redbull
+
+
+
+```
+
+Let's try building out rules
+
+
+```{r}
+
+#which(colnames(redbull_arules_wide_2)=='RED BULL')
+
+#head(redbull_arules_wide_2)
+
+itemFrequencyPlot(trans_2)
+
+
+```
+
+So, it looks like we have decent supports among all of the redbull transactions for the variables.  Obviously, the store brand is the highest support just because of the amount of products that this brand offers in the categories that we selected for this analysis.
+
+Just as we saw in our previous graphical breakdowns, Monster has very high support as well as mountain dew and coke.  
+
+```{r}
+
+# these are all of the frequent itemsets purchases with redbull, redbull is not needed in the transaction information, because the transactions are all pre-filtered for Red Bull
+
+itemsets<-apriori(trans_2, parameter = list(target="frequent", supp=0.001, minlen=1))
+
+inspect(head(sort(itemsets), n=20))
+
+
+```
+
+Let's look at the quality of the rules that have been created by showing lift as well
+
+```{r}
+quality(itemsets)$lift <- interestMeasure(itemsets, measure="lift", trans = trans_2)
+inspect(head(sort(itemsets, by="lift"), n=20))
+
+```
+
+These rules are interesting. So, when we try to predict these rules occuring in the itemsets, these are the ones where our confidence is within expectation.  Remember that lift = confidence/expected confidence.  
+
+Notice that the lift shows that the important transactions start to move away from the 2-item transactions and really focus in on some of the very interesting-niche cases.  For instance, the first rule with a lift of 44 shows somebody purchasing Kraft products, Betty crocker, and clover valley occur very frequently in redbull transactions.  We may be able to surmise that this is somebody who is going to the store to pick up a few items to cook dinner or to stock up for the week.  They just so happen to pick up a red bull when they do this, and they do it more often than we would expect.  
+The second rule is interesting as well.  This look like folks who drop in, to pick up their breakfast for the week, but they also buy a redbull when they buy these items.  Let's hope that they are not putting the redbull and milk on their cereal.  
+
+In general, many of the remaining rules appear to show that folks really like junk food with their energy drinks.  They also tend to purchase multiple beverages together when they do this.  
+
+
+
+```{r}
+
+plot(head(sort(itemsets, by="lift"),10),
+  method="graph", control=list(cex=.7))
+
+
+```
+
+```{r}
+
+plot(head(sort(itemsets, by="support"),20),
+  method="graph", control=list(cex=.7))
+
+
+```
+
+
+Let's change the target a bit here to see if we notice any new rules coming out of the dataset
+
+
+```{r}
+itemsets_2 <- apriori(trans_2,parameter = list(minlen=1, supp=0.01, conf=0.01))
+
+itemsets_2_sorted <- sort(itemsets_2, by="support")
+inspect(itemsets_2_sorted)
+
+```
+
+These are the same rules that we had previously seen However, now, with the new paramters we return just 34 rules that we are interested in.  Most of the rules are still 2 item rules (everything with no item in antecedent(lhs) on the left is redbull + the consequence (rhs) item)
+
+
+```{r}
+
+itemsets_2_sorted = head(sort(itemsets_2, by="lift"),6)
+
+plot(itemsets_2_sorted, by="lift",
+  method="grouped", measure = 'confidence', shading = 'lift')
+
+```
+It looks like the most interesting rule occurs when little debbies and 5-hour energy drinks are purchased with Red Bull.  This is a fascinating combo!  I am sure your pancrease, liver, and heart love you when you take this cocktail togther.
+
+From a business perspective, I wonder if we could somehow partner with 5-hour and little debbie to make "Energy Fuel Kits" or something.  Take a shot of energy now, then get a nice stream of energy throughout time from the Red Bull and amp up with Little Debbie for that afternoon boost!
+
+The interesting thing about these rules is that we would not necessarily have picked up on these relationships had we not used the Arules package to derive these itemsets.  Although our dataset was a bit contrived, it is interesting to see the results that we got back from the models.
+
+
+
+
+
+
+
+```{r}
+# wonder if we see anything if we just leave redbull in the dataset
+
+
+#itemsets_3 <- apriori(trans,parameter = list(minlen=1, supp=0.01, conf=0.01))
+
+#itemsets_3_sorted <- sort(itemsets_3, by="support")
+#inspect(itemsets_3_sorted)
+
+### Commented out, because the rules just look weird...
+```
 
