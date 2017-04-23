@@ -1,23 +1,23 @@
 ---
 title: "Association Rules Mining for RB Data"
-author: "Dennis Murray and Alex Deshowitz"
+author: "Dennis Murray and Alex Deshowitz <br> Southern Methodist University- MSDS 7331 <br> April 23, 2017"
 output: 
     html_document:
         keep_md: TRUE
 ---
-# Introduction
+#**Introduction**
 
-### This project seeks to use a dataset from a major retailer to create association rules for our product, RB.  Creating these associations may better help us determine whether or not to use partnerships or reward programs with our customers.  It may also help us develop customer segmentation models based upon variables such as items purchased, brands in the customer basket, and size of overall order.  Ultimately, knowing these pieces of information about our customers will help us better monetize our product, build brand-awareness, and increase brand acquisition for customers who may not have considered our product otherwise.
+  This project seeks to use a dataset from a major retailer to create association rules for our product, RB.  Creating these associations may better help us determine whether or not to use partnerships or reward programs with our customers.  It may also help us develop customer segmentation models based upon variables such as items purchased, brands in the customer basket, and size of overall order.  Ultimately, knowing these pieces of information about our customers will help us better monetize our product, build brand-awareness, and increase brand acquisition for customers who may not have considered our product otherwise.
 
-# Business Understanding
+#**Business Understanding**
 
-### This dataset was collected as part of normal operations at a major retailer.  The purpose of the collection of this information was multiple-fold.  First, this data was collected to track inventories in the store and manage supply chain interactions.  Additionally, this data was collected so that companies selling the products on the shelf in the retailer could gain better insight into product movements and shifts.  Since this data is already being collected, we can now use this information to create association rules that will allow us to better understand the customers who purchase RB.  By understanding this customer better, we will be able to translate that knowledge into better products for the customer, better placement, enhanced partnerships, and increased gross sales.
+  This dataset was collected as part of normal operations at a major retailer.  The purpose of the collection of this information was multiple-fold.  First, this data was collected to track inventories in the store and manage supply chain interactions.  Additionally, this data was collected so that companies selling the products on the shelf in the retailer could gain better insight into product movements and shifts.  Since this data is already being collected, we can now use this information to create association rules that will allow us to better understand the customers who purchase RB.  By understanding this customer better, we will be able to translate that knowledge into better products for the customer, better placement, enhanced partnerships, and increased gross sales.
 
 ADDRESS VALIDATION METHODS
 
-# Data Understanding
+# **Data Understanding**
 
-### Overview
+###Overview
 
 Our dataset was collected by a major retailer and as RB we are using this data for our analysis.  The dataset consists of 5 attributes.  The total size of our dataset is 10,263,051 records.  However, we do do some filtering in the EDA section of the framework in order to better focus on the objective of the analysis.
 
@@ -49,7 +49,7 @@ colnames(BasketData)<-c("TransactionID", "ClassDesc", "DeptDesc", "Brand", "Unit
 BasketData$Units<-as.numeric(gsub(",", "", as.character(BasketData$Units)))
 ```
 
-### EDA- Initial Integrity Checks
+### **EDA- Initial Integrity Checks**
 
 We always take a series of steps to ensure that our dataset is clean and does not contain errors prior to our initial data exploration.  What follows is that process:
 
@@ -104,7 +104,7 @@ barplot(head(dfa_dt$V1,20),names.arg = head(dfa_dt$DeptDesc, 20), cex.names = 0.
 It looks like stationary is the most "keyed-in" item in the dataset.  There are about 100,000 records for candy and snacks that were keyed in.  While this is not ideal, to filter out candy and snack records, not having this information just introduces incomplete data.  This solidifies the fact that we should probably remove these items. We also have the luxury of having a large number of observations to build our model on.  Therefore the filtering of a couple hundred thousand records is not the end of the world.
 
 
-### EDA- Tidy data filtering
+### **EDA- Tidy data filtering**
 
 Now that we know that we want to filter out the records with no brand and the records with negative values for individual scans within the transaction, we have to do some interesting filtering.
 
@@ -141,7 +141,7 @@ BasketData<- sqldf('Select TransactionID, ClassDesc, DeptDesc, Brand, Units
 ```
 
 
-### EDA- Learning the Data
+### **EDA- Learning the Data**
 
 How many transactions contain Redbull?
 
@@ -174,14 +174,10 @@ It is really interesting that RedBull is in the non-carbonated class
 How many redbulls does the average transaction contain?
 
 ```{r}
-print('mean:')
+
 mean(df_analysis_redbull$Units)
 
-print('max:')
-
 max(df_analysis_redbull$Units)
-
-print('min:')
 
 min(df_analysis_redbull$Units)
 
@@ -196,6 +192,7 @@ What does the distribution of purchased look like? It is probably highly skewed 
 qplot(Units, data = df_analysis_redbull, geom = 'histogram')
 
 ```
+
 Just as we thought based on the analysis, mostly one and two can purchases
 
 What is RedBull's candy & snacks transaction share?
@@ -356,7 +353,7 @@ barplot(tail(candy_snack_df$units_purch,20), names.arg = tail(candy_snack_df$Bra
 All soft drinks and doritos. We can see that it might be appealing to have a little sweet and savory.  However, it looks like sweets are also a favorite, with little debbies and Hersheys being up next.
 
 
-Something we have to jump into now is the idea of different combinations of transactions.  We should probably group the dataset by the number of items in each transaction.  This will help us better interpret the rules that we get out of the model.  It also may help us set our values for minsup, etc.
+Something we have to jump into now is the idea of different combinations of transactions.  We should probably group the dataset by the number of items in each transaction.  This will help us better interpret the rules that we get out of the model as interesting or not.  It also may help us set our values for minsup, etc.
 
 ```{r}
 
@@ -371,7 +368,7 @@ redbull_brands_in_trans<-sqldf('select T1.TransactionID As TransactionID ,brands
 
 ```
 
-Transactions with 2 brands
+**Transactions with 2 brands**
 
 ```{r}
 # 2 brand transactions (filter out RB)
@@ -391,7 +388,7 @@ barplot(tail(two_brand_trans$units,20), names.arg = tail(two_brand_trans$Brand,2
 ```
 So, a few things start to shake out here.  We see that in 2 brand transactions Marlboros are very popular.  This is of course followed by Monster.  
 
-Transactions with 3 brands
+**Transactions with 3 brands**
 
 ```{r}
 # 3 brand transactions (filter out RB)
@@ -412,7 +409,7 @@ barplot(tail(three_brand_trans$units,20), names.arg = tail(three_brand_trans$Bra
 As we start adding more items, store brands start to become a larger proportion.  This is probably a customer who comes in for one thing and picks up some smokes and an energy boost while they are at it.
 
 
-Transactions with 4 brands
+**Transactions with 4 brands**
 
 ```{r}
 four_brand_trans<- sqldf('select brand, sum(Units) As units From redbull_brands_in_trans
@@ -430,7 +427,7 @@ barplot(tail(four_brand_trans$units,20), names.arg = tail(four_brand_trans$Brand
 ```
 So, it looks like folks who come in for more than 3 distinct items still like to purchase other energy drinks, but cigarettes occur in fewer transactions.  Store brands also become much more popular.
 
-Transactions with 5 brands
+**Transactions with 5 brands**
 
 ```{r}
 five_brand_trans<- sqldf('select brand, sum(Units) As units From redbull_brands_in_trans
@@ -449,6 +446,14 @@ barplot(tail(five_brand_trans$units,20), names.arg = tail(five_brand_trans$Brand
 It looks like home products really jump up with 5 items.  We definitely see alot of consistency in the top 10 brands that are all purchased together though.
 
 That being said, we would like a better way of associating these products together than simple visual analytics.  It would be really nice to be able to look at significant rules and baskets that occur very frequently as it is obviously very cumbersome to do with nearly 2000 brands.
+
+### **Association Rules**
+
+####**Overview**
+
+For the first sets of rules, we will really trim down the dataset substantially. We will only look at transactions that contained redbull as we are most interested in the rules associated with those transactions.  We will then show transactional rules for product classes and all products in the entire dataset.  By creating rules for the entire set, we can see if there are any interesting baskets of data that Redbull should want to be a part of in the future.
+
+####Redbull Transactions- Brand Level Rules
 
 We will use a filtered dataframe to produce rules around just the purchases that include RedBull
 
@@ -515,7 +520,7 @@ length(unique(redbull_arules$Brand))
 ```
 
 
-Ok, we have 558 brands in this dataset.  While it would be nice to evaluate all of them, it probably makes sense to eliminate the ones that do not occur that frequently.  While, from a filtering perspective, we will only be creating partial transactions in this case, we will be looking at the transactions that have commonality with redbull in order to make the rules.  Therefore, this approach still has some validity.
+We have 558 brands in this dataset.  While it would be nice to evaluate all of them, it probably makes sense to eliminate the ones that do not occur that frequently.  While, from a filtering perspective, we will only be creating partial transactions in this case, we will be looking at the transactions that have commonality with redbull in order to make the rules.  Therefore, this approach still has some validity and may produce and some interesting rules.
 
 ```{r}
 most_pop_brands <- sqldf('Select Brand, count(*) As occurances  From redbull_arules Where Brand <> "RED BULL" group by 1 Order By 2')
@@ -682,6 +687,9 @@ inspect(itemsets_2_sorted)
 These are the same rules that we had previously seen However, now, with the new paramters we return just 34 rules that we are interested in.  Most of the rules are still 2 item rules (everything with no item in antecedent(lhs) on the left is redbull + the consequence (rhs) item)
 
 
+
+
+
 ```{r}
 
 itemsets_2_sorted = head(sort(itemsets_2, by="lift"),6)
@@ -689,15 +697,71 @@ itemsets_2_sorted = head(sort(itemsets_2, by="lift"),6)
 plot(itemsets_2_sorted, by="lift",
   method="grouped", measure = 'confidence', shading = 'lift')
 
+#inspect(itemsets_2_sorted)
+
+itemsets_2_sorted = sort(itemsets_2, by="lift")
+
+
+inspect(itemsets_2_sorted)
+
 ```
+
+
+
 It looks like the most interesting rule occurs when little debbies and 5-hour energy drinks are purchased with Red Bull.  This is a fascinating combo!  I am sure your pancrease, liver, and heart love you when you take this cocktail togther.
 
 From a business perspective, I wonder if we could somehow partner with 5-hour and little debbie to make "Energy Fuel Kits" or something.  Take a shot of energy now, then get a nice stream of energy throughout time from the Red Bull and amp up with Little Debbie for that afternoon boost!
 
 The interesting thing about these rules is that we would not necessarily have picked up on these relationships had we not used the Arules package to derive these itemsets.  Although our dataset was a bit contrived, it is interesting to see the results that we got back from the models.
 
+#### ALEX WIP START HERE ########################
+
+####All Transactions- Brand Level Rules
+
+We will now take our dataset that we originally tidy-ed up to create the best rules for the dataset.  However, due to the sheer number of brands, we will have to limit our dataset. Completing this analysis will allow us to see whether or not we think there are any meaningful combinations that we might want our product to somehow be paired with or which we would like to be placed next to in the store.
+
+Once again, we will only be evaluating partial transactions, but that is alright.  We do not need to be mutually exclusive or collectively exhaustive due to our line of questioning associated with this modeling exercise.
 
 
+```{r}
+
+
+#product_arules <- sqldf('Select * From BasketData Where DeptDesc In ("CANDY & SNACKS","FOOD","PERISHABLES")')
+
+```
+
+
+```{r}
+
+#summary(product_arules)
+
+
+#keepers<- c('TransactionID','Brand')
+
+#product_arules <- product_arules[keepers]
+
+
+#product_arules$present <- 1
+
+#redbull_arules_wide<- spread(redbull_arules, Brand, Present)
+
+#summary(product_arules)
+
+#product_arules<- sqldf('Select Distinct * From product_arules') # need to pull in only unique values for our transactions
+
+
+#product_arules_wide<- spread(product_arules, Brand, present)
+
+
+
+```
+
+
+
+
+# for this data, what is hte average transaction length?
+
+# Let's just filter for food, perishables and 
 
 
 
