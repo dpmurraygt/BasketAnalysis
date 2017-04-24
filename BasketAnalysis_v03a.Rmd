@@ -1,0 +1,925 @@
+---
+title: "Association Rules Mining for RB Data"
+author: "Dennis Murray and Alex Deshowitz <br> Southern Methodist University- MSDS 7331 <br> April 23, 2017"
+output: 
+    html_document:
+        keep_md: TRUE
+---
+#**Introduction**
+
+  This project seeks to use a dataset from a major retailer to create association rules for our product, RB.  Creating these associations may better help us determine whether or not to use partnerships or reward programs with our customers.  It may also help us develop customer segmentation models based upon variables such as items purchased, brands in the customer basket, and size of overall order.  Ultimately, knowing these pieces of information about our customers will help us better monetize our product, build brand-awareness, and increase brand acquisition for customers who may not have considered our product otherwise.
+
+#**Business Understanding**
+
+  This dataset was collected as part of normal operations at a major retailer.  The purpose of the collection of this information was multiple-fold.  First, this data was collected to track inventories in the store and manage supply chain interactions.  Additionally, this data was collected so that companies selling the products on the shelf in the retailer could gain better insight into product movements and shifts.  Since this data is already being collected, we can now use this information to create association rules that will allow us to better understand the customers who purchase RB.  By understanding this customer better, we will be able to translate that knowledge into better products for the customer, better placement, enhanced partnerships, and increased gross sales.
+
+ADDRESS VALIDATION METHODS
+
+# **Data Understanding**
+
+###Overview
+
+Our dataset was collected by a major retailer and as RB we are using this data for our analysis.  The dataset consists of 5 attributes.  The total size of our dataset is 10,263,051 records.  However, we do do some filtering in the EDA section of the framework in order to better focus on the objective of the analysis.
+
+The collection of this data occurs on an automated basis via the retailer's point-of-sale system.  At the cash register, scanning of the UPC barcode records the specific item, and the quantity of the item, purchased.  This data is transmitted on a daily basis to a third-party aggregator that compiles transactions from all of the retailer's stores, and makes the data available to the retailer's vendor partners for analysis.  In the case of RB, daily data is comprised of items in the same category.  Once per quarter, the aggregator makes available the complete transactional history that can be used for a complete basket analysis.
+
+The 10.2MM records included in this analysis comprise a limited view of the retailer's business.  In fact, it is just one week of data, for a specific physical store format labeled as "Traditional" that comprises about 20% of the retailer's store count.  The data was aggregated from the SKU (UPC or Item Barcode level) to the Department/Class/Brand level.  While this removed the specficity of working at an item level, working at the item level would have reduced the support for anyone transaction type to a much lower level, with each Department/Class/Brand having possibly dozens to hundreds of UPCs available.  Thus, one part of our exploratory data analysis will be comprised of determining the appropriate level of detail to work from to mine the data rules for our analysis.
+
+### Data Dictionary
+
+**TransactionID**: The transaction ID represents each unique transaction.  There is one record for every item in                         each transaction.  This is aggregated by the item (i.e- a transaction with 2 cans of Red Bull                         will have 1 record for redbull)
+
+**ClassDesc**: Description of the product's class.  This is a high level category the product bought falls into.
+  
+**DeptDesc**: This is a subset of class. 
+  
+**Brand**: Product's brand name as created in the item master.  It is important to realize that the Item Master is human-managed, and thus may not be a perfect representation of the 
+  
+**Units**: Units sold in the current transaction.
+
+### Load All Packages
+```{r load package,  results = ('hide'), message = FALSE, WARNING = FALSE}
+
+packages<- c('plyr','data.table','dplyr','arules','arulesViz','tidyr','ggplot2','magrittr', 'sqldf')
+
+sapply(packages, library, character.only = TRUE)
+
+```
+
+### Load Main dataframe
+```{r}
+BasketData<-read.csv("Data/BasketData.csv")
+colnames(BasketData)<-c("TransactionID", "ClassDesc", "DeptDesc", "Brand", "Units")
+BasketData$Units<-as.numeric(gsub(",", "", as.character(BasketData$Units)))
+```
+
+### **EDA- Initial Integrity Checks**
+
+We always take a series of steps to ensure that our dataset is clean and does not contain errors prior to our initial data exploration.  What follows is that process:
+
+```{r}
+
+summary(BasketData)
+
+```
+We notice that the dataset appears to contain negative units.  After some exploration of the data, it was determined that these values should be filtered out.  However, remember, that this is transaction data.  Therefore, we don't want to take only the negative values from the transaction.  Our assumption is that one of these values showing up in a transaction negates the entire transaction.  Therefore, some more complex filtering is necessary. We will do the filtering at the end of this process.
+
+```{r}
+
+str(BasketData)
+
+
+```
+It looks like all of the variables were read in correctly based on the datatypes. There are 1963 unique brands in the dataset, 25 different departments, and 747 different classes of those items.
+
+Let's take a deeper look into the brands present in the dataset.
+
+```{r}
+dt <- data.table(BasketData)
+dt <- dt[,sum(Units),by = Brand]
+dt <- dt[order(V1)]
+
+par(mfrow = c(1,1))
+
+barplot(tail(dt$V1,20), names.arg = tail(dt$Brand,20), cex.names = 0.7, las = 2, col = 'dark blue', ylab = 'Total Units', main = 'Top-20 Brands' )
+
+barplot(head(dt$V1,20), names.arg = head(dt$Brand,20), cex.names = 0.7, las = 2, col = 'dark blue', ylab = 'Total Units', main = 'Bottom-20 Brands' )
+
+
+par(mfrow = c(1,1))
+```
+
+It looks like we have some brands that are not labeled.  We will want to filter these out of our main dataset before we do any modeling as this will not provide us further insight down the road
+
+Let's look at the blanks to make sure.
+
+```{r}
+df_analysis<- BasketData[BasketData$Brand == "",]
+
+dfa_dt <- data.table(df_analysis)
+dfa_dt <- dfa_dt[,sum(Units),by = DeptDesc]
+dfa_dt <- dfa_dt[order(-V1),]
+
+barplot(head(dfa_dt$V1,20),names.arg = head(dfa_dt$DeptDesc, 20), cex.names = 0.7, las = 2, col = 'dark blue', main = 'Most frequent items with no brand')
+
+
+```
+
+It looks like stationary is the most "keyed-in" item in the dataset.  There are about 100,000 records for candy and snacks that were keyed in.  While this is not ideal, to filter out candy and snack records, not having this information just introduces incomplete data.  This solidifies the fact that we should probably remove these items. We also have the luxury of having a large number of observations to build our model on.  Therefore the filtering of a couple hundred thousand records is not the end of the world.
+
+
+### **EDA- Tidy data filtering**
+
+Now that we know that we want to filter out the records with no brand and the records with negative values for individual scans within the transaction, we have to do some interesting filtering.
+
+In order to maintain the integrity of our model, we have to come up with a way to filter the data that allows us to 1.) identify  the transactions that contain negative values 2.) filter out those entire transactions.  
+
+Given that we have such a large dataset, we can afford to filter out entire transactions that contain partial bad records.  While some of these transactions do more than likely contain valid transaction-portions, we cannot be certain.  Therefore, the more conservative approach when thinking about association rule creation is to not risk leaving in partial records that could represent bad data.  We will use the SQLdf package for this portion of the analysis.
+
+```{r}
+
+# let's take out the transactions that contain negative values
+# notice that we are taking out distinct transactions and not just those items. 
+# this ensures that we get whole itemsets that are not incomplete
+BasketData<- sqldf('Select TransactionID, ClassDesc, DeptDesc, Brand, Units
+                   From BasketData Where TransactionID Not In  
+                   (Select Distinct
+                   TransactionID
+                   From BasketData
+                   Where 
+                   Units<=0)')
+
+
+
+# ok, that looks like it worked.  Now, we need to see what removal of the transactions without any brand looks like
+
+BasketData<- sqldf('Select TransactionID, ClassDesc, DeptDesc, Brand, Units
+                   From BasketData Where TransactionID Not In  
+                   (Select Distinct
+                   TransactionID
+                   From BasketData
+                   Where 
+                   Brand="")')
+
+
+```
+
+
+### **EDA- Learning the Data**
+
+How many transactions contain Redbull?
+
+```{r}
+
+df_analysis_redbull<- BasketData[BasketData$Brand == "RED BULL",]
+
+length(unique(df_analysis_redbull$TransactionID)) # 14046 transactions have redbull
+length(unique(BasketData$TransactionID))# 2493458
+
+```
+What percentage of transactions is this?
+
+```{r}
+
+length(unique(df_analysis_redbull$TransactionID))/
+  length(unique(BasketData$TransactionID)) # looks like about 0.56% of all transactions have a redbull
+
+```
+
+What Class is Red Bull?
+
+```{r}
+
+unique(df_analysis_redbull$ClassDesc)
+```
+
+Red Bull is categorized into the Non-carbonated drop ship class. Creation of this class is a legacy of the category management of non-alcoholic beverage primarily by the two major beverage companies - Coke and Pepsi - and their dichotomy of products between their main product lines, Carbonated Soft Drinks, and everything else.  Energy Drinks, when created in the late 90s and early 2000s were considered to be part of the "Everything else" by these companies. 
+
+How many redbulls does the average transaction contain?
+
+```{r}
+
+mean(df_analysis_redbull$Units)
+
+max(df_analysis_redbull$Units)
+
+min(df_analysis_redbull$Units)
+
+
+```
+Looks like about 1.3 units and somebody purchased about 14 units.
+
+What does the distribution of purchased look like? It is probably highly skewed to 1-item purchases.
+
+```{r WARNING = FALSE}
+
+qplot(Units, data = df_analysis_redbull, geom = 'histogram')
+
+```
+
+Just as we thought based on the analysis, mostly one and two can purchases
+
+What is RedBull's candy & snacks transaction share?
+
+```{r}
+print('Number of candy and snack transactions:' )
+length(unique(BasketData$TransactionID[BasketData$DeptDesc=='CANDY & SNACKS'])) # 1,217,781 with candy or snacks
+
+print('Number of total transactions:' )
+length(unique(BasketData$TransactionID)) #2,493,458 total transactions
+
+print('Percent of transactions with candy and snacks: ')
+length(unique(BasketData$TransactionID[BasketData$DeptDesc=='CANDY & SNACKS']))/length(unique(BasketData$TransactionID))
+
+print('Percent of candy and snack transactions with RedBull: ')
+
+length(unique(df_analysis_redbull$TransactionID))/length(unique(BasketData$TransactionID[BasketData$DeptDesc=='CANDY & SNACKS']))
+# 1.1% of candy or snack transactions contain redbull
+
+
+
+```
+
+Alright, it looks like nearly 50% of the transactions in our dataset are in the candy and snacks department, which is the same department as redbull.  
+
+1.1% of all candy and snack transactions contain Red Bull.
+
+I wonder what the biggest competitor looks like?
+
+```{r}
+df_analysis_monster<- BasketData[BasketData$Brand == "MONSTER",]
+
+length(unique(df_analysis_monster$TransactionID)) # 25,338 transactions have Monster
+
+
+```
+
+About 25,338 transactions contain Monster;however, Monster's transaction size may also be associated with their pricing and promotional programming, which commonly calls for two items to be purchased to receive the lower price.  Monster's broader product line, with more flavors and product types - including ready-to-drink Coffee - may also create a "Mix and Match" basket for a shopper.  (This could be another interesting analysis.)
+
+```{r}
+
+print('mean:')
+mean(df_analysis_monster$Units)
+print('max:')
+max(df_analysis_monster$Units)
+print('min:')
+min(df_analysis_monster$Units)
+print('percentage higher than redbull:' )
+mean(df_analysis_monster$Units)/mean(df_analysis_redbull$Units)-1
+
+```
+Just as suspected, the average transaction amount is a tad higher.  We may want to look at the transaction distribution, despite the fact that it will have a very high positive skew due to all of the 1-item transactions.
+
+```{r}
+
+par(mfrow = c(1,2))
+
+# create the dataframe
+rb <- data.frame(rep('RedBull', length(unique(df_analysis_redbull$TransactionID))))
+df1<- cbind(rb, data.frame(df_analysis_redbull$Units))
+colnames(df1) = c('brand','units')
+
+mon <- data.frame(rep('Monster', length(unique(df_analysis_monster$TransactionID))))
+df2<- cbind(mon, data.frame(df_analysis_monster$Units))
+colnames(df2) = c('brand','units')
+
+
+df3<- rbind(df1,df2)
+
+boxplot(units~brand, data = df3)
+
+# looks like 42 from Monster skews things a bit, let's filter it
+
+df3<- df3[df3$units<30,]
+
+boxplot(units~brand, data = df3)
+
+par(mfrow = c(1,1))
+
+
+```
+Ok, it doesnt look like their distributions are really that much different.  Both have a high degree of positive skew.
+
+We would like to look at Redbull on a transaction level next.  This will help us better understand the rules that we get out of our model.
+
+How many items are purchased in each Redbull transaction?
+
+```{r}
+# How many items are purchased in each redbull transaction?
+
+redbull_items_purchased<-sqldf('select avg(brands) As num_brands, avg(total_units) As avg_units From
+                               (select TransactionID,count(Distinct(Brand)) As brands,
+                               Sum(Units) AS total_units  From BasketData Where 
+                               TransactionID in (select distinct TransactionID From BasketData Where Brand = "RED BULL") Group By 1)' )
+
+print(redbull_items_purchased)
+
+```
+On average, there are about 5.3 units in each transaction.  We also see that there are fewer brands.  Therefore, this means that something is getting purchased multiple times in the transaction. Let's hope it is RB.
+
+Are most transactions Redbull by itself?
+
+```{r}
+
+redbull_plus_snack_df<-sqldf('select TransactionID, ClassDesc, DeptDesc, Brand, Units  From BasketData Where 
+                             TransactionID in (select distinct TransactionID From BasketData Where Brand = "RED BULL")
+                             And Brand<> "RED BULL"')
+
+length(unique(redbull_plus_snack_df$TransactionID)) 
+
+```
+Alright, the vast majority of Redbull transactions contain alot more than one item.
+
+Ok, which brands are most often purchased with RB?
+
+```{r}
+brand_df<- sqldf('Select Brand, Count(*) As trans, Sum(Units) As units_purch  From redbull_plus_snack_df Group By 1 Order By 3')
+
+
+barplot(tail(brand_df$units_purch,20), names.arg = tail(brand_df$Brand,20), cex.names = 0.7, las = 2, col = 'dark blue' )
+
+```
+
+It looks like we have some store brands, and unbranded category.  Unbranded items are actually really common for this retailer - occurring most often in Home Decor, Stationery, Sundries, and Shoes for Departments.
+
+Wow!  Monster is the next most purchased, followed by Mountain Dew. It is really interesting.  Lots of beverage and energy products are purchased together and junk food also appears to be very popular.
+
+That's nice, but which department are these items in?
+
+```{r}
+department_df<- sqldf('Select DeptDesc, Count(*) As trans, Sum(Units) As units_purch  From redbull_plus_snack_df Group By 1 Order By 3')
+
+barplot(tail(department_df$units_purch,20), names.arg = tail(department_df$DeptDesc,20), cex.names = 0.7, las = 2, col = 'dark blue' )
+```
+Just as we saw earlier, candy and snacks dominate.
+
+
+Which classes do these encompass?
+
+```{r}
+
+class_df<- sqldf('Select ClassDesc, Count(*) As trans, Sum(Units) As units_purch  From redbull_plus_snack_df Group By 1 Order By 3')
+
+barplot(tail(class_df$units_purch,20), names.arg = tail(class_df$ClassDesc,20), cex.names = 0.7, las = 2 , col ='dark blue')
+```
+
+So the non-carbonated looks high.  However, now we see that cigarettes are pretty popular compliments to the Redbull.
+
+
+I wonder which candy and snacks are most popular with RedBull?
+
+```{r}
+
+candy_snack_df<- sqldf('Select Brand, Count(*) As trans, Sum(Units) As units_purch  
+                       From redbull_plus_snack_df Where DeptDesc ="CANDY & SNACKS" Group By 1 Order By 3')
+
+barplot(tail(candy_snack_df$units_purch,20), names.arg = tail(candy_snack_df$Brand,20), cex.names = 0.7, las = 2 , col = 'dark blue')
+
+```
+All soft drinks and doritos. We can see that it might be appealing to have a little sweet and savory.  However, it looks like sweets are also a favorite, with little debbies and Hersheys being up next.
+
+
+Something we have to jump into now is the idea of different combinations of transactions.  We should probably group the dataset by the number of items in each transaction.  This will help us better interpret the rules that we get out of the model as interesting or not.  It also may help us set our values for minsup, etc.
+
+```{r}
+
+# add dimension to the dataset
+
+redbull_brands_in_trans<-sqldf('select T1.TransactionID As TransactionID ,brands, ClassDesc, DeptDesc, Brand, Units  
+                               From BasketData As T1
+                               Inner Join ( Select TransactionID, Count(Distinct(Brand)) As brands From BasketData Group By 1) As T2
+                               On T1.TransactionID = T2.TransactionID
+                               Where T1.TransactionID in (select distinct TransactionID From BasketData Where Brand = "RED BULL")')
+
+
+```
+
+**Transactions with 2 brands**
+
+```{r}
+# 2 brand transactions (filter out RB)
+
+two_brand_trans<- sqldf('select brand, sum(Units) As units From redbull_brands_in_trans
+                        Where
+                        Brand <> "RED BULL"
+                        And brands = 2
+                        Group By 1
+                        Order By 2
+                        
+                        ')
+
+barplot(tail(two_brand_trans$units,20), names.arg = tail(two_brand_trans$Brand,20), cex.names = 0.7, las = 2, col = 'dark blue' )
+
+
+```
+So, a few things start to shake out here.  We see that in 2 brand transactions Marlboros are very popular.  This is of course followed by Monster.  
+
+**Transactions with 3 brands**
+
+```{r}
+# 3 brand transactions (filter out RB)
+
+three_brand_trans<- sqldf('select brand, sum(Units) As units From redbull_brands_in_trans
+                          Where
+                          Brand <> "RED BULL"
+                          And brands = 3
+                          Group By 1
+                          Order By 2
+                          
+                          ')
+
+barplot(tail(three_brand_trans$units,20), names.arg = tail(three_brand_trans$Brand,20), cex.names = 0.7, las = 2, col ='dark blue'
+        )
+
+```
+As we start adding more items, store brands start to become a larger proportion.  This is probably a customer who comes in for one thing and picks up some smokes and an energy boost while they are at it.
+
+
+**Transactions with 4 brands**
+
+```{r}
+four_brand_trans<- sqldf('select brand, sum(Units) As units From redbull_brands_in_trans
+                         Where
+                         Brand <> "RED BULL"
+                         And brands = 4
+                         Group By 1
+                         Order By 2
+                         
+                         ')
+
+barplot(tail(four_brand_trans$units,20), names.arg = tail(four_brand_trans$Brand,20), cex.names = 0.7, las = 2, col = 'dark blue' )
+
+
+```
+So, it looks like folks who come in for more than 3 distinct items still like to purchase other energy drinks, but cigarettes occur in fewer transactions.  Store brands also become much more popular.
+
+**Transactions with 5 brands**
+
+```{r}
+five_brand_trans<- sqldf('select brand, sum(Units) As units From redbull_brands_in_trans
+                         Where
+                         Brand <> "RED BULL"
+                         And brands = 5
+                         Group By 1
+                         Order By 2
+                         
+                         ')
+
+barplot(tail(five_brand_trans$units,20), names.arg = tail(five_brand_trans$Brand,20), cex.names = 0.7, las = 2, col= 'dark blue' )
+
+```
+
+It looks like home products really jump up with 5 items.  We definitely see alot of consistency in the top 10 brands that are all purchased together though.
+
+That being said, we would like a better way of associating these products together than simple visual analytics.  It would be really nice to be able to look at significant rules and baskets that occur very frequently as it is obviously very cumbersome to do with nearly 2000 brands.
+
+### **Association Rules**
+
+####**Overview**
+
+For the first sets of rules, we will really trim down the dataset substantially. We will only look at transactions that contained redbull as we are most interested in the rules associated with those transactions.  We will then show transactional rules for product classes and all products in the entire dataset.  By creating rules for the entire set, we can see if there are any interesting baskets of data that Redbull should want to be a part of in the future.
+
+####Redbull Transactions- Brand Level Rules
+
+We will use a filtered dataframe to produce rules around just the purchases that include RedBull
+
+```{r}
+
+
+redbull_arules<-sqldf('select TransactionID, ClassDesc, DeptDesc, Brand, Units  From BasketData Where 
+                             TransactionID in (select distinct TransactionID From BasketData Where Brand = "RED BULL")
+                             ')
+
+
+
+```
+
+```{r}
+head(redbull_arules)
+
+
+```
+
+This is nice, but I am going to need to pair this particular dataset down a bit.  It might make sense to look at just the baskets for the departments that are most common in RedBull transactions.  Let's see what those are
+
+```{r}
+
+most_common_depts = sqldf('select deptdesc, count(*) As occurances From redbull_arules Where Brand <> "RED BULL" Group By 1 Order By 2 desc')
+
+
+
+```
+
+```{r}
+
+head(most_common_depts)
+
+```
+
+Most of the items that are purchases with redbull are candy and snacks, food, and perishables.  For our rules, let's just take a subset of the transactions that include these items in them to see if we can find anything that is of interest.
+
+```{r}
+
+redbull_arules <- sqldf('Select * From redbull_arules Where DeptDesc In ("CANDY & SNACKS","FOOD","PERISHABLES")')
+
+
+```
+
+
+```{r}
+print(summary(redbull_arules))
+
+#print(nrow(redbull_arules))
+
+
+```
+
+
+Ok, so we have substantially decreased the size of the original dataset.  However, we have really narrowed down the problem.  Let's see what we get.
+
+
+```{r}
+
+length(unique(redbull_arules$Brand))
+
+
+```
+
+
+We have 558 brands in this dataset.  While it would be nice to evaluate all of them, it probably makes sense to eliminate the ones that do not occur that frequently.  While, from a filtering perspective, we will only be creating partial transactions in this case, we will be looking at the transactions that have commonality with redbull in order to make the rules.  Therefore, this approach still has some validity and may produce and some interesting rules.
+
+```{r}
+most_pop_brands <- sqldf('Select Brand, count(*) As occurances  From redbull_arules Where Brand <> "RED BULL" group by 1 Order By 2')
+
+
+barplot(tail(most_pop_brands$occurances,30), names.arg = tail(most_pop_brands$Brand,30), cex.names = 0.7, las = 2 , col = 'dark blue')
+
+
+```
+
+These look like really good brands that we might want to make some rules for with Redbull purchases...Now, we have to format the data appropriately
+
+First, filter for just these brands:
+
+```{r}
+
+redbull_arules<- sqldf('Select * From redbull_arules Where Brand In (Select Brand From (Select Brand, count(*) As occurances  From redbull_arules group by 1) base
+                     Where occurances >=156)')
+
+```
+
+```{r}
+
+length(unique(redbull_arules$Brand))
+
+```
+
+Now, we have isolated those top 30 brands that occur with Red Bull most often
+
+
+```{r}
+
+keepers<- c('TransactionID','Brand')
+
+redbull_arules <- redbull_arules[keepers]
+
+
+redbull_arules$present <- 1
+
+#redbull_arules_wide<- spread(redbull_arules, Brand, Present)
+
+summary(redbull_arules)
+
+redbull_arules<- sqldf('Select Distinct * From redbull_arules') # need to pull in only unique values for our transactions
+
+redbull_arules_wide<- spread(redbull_arules, Brand, present)
+
+
+```
+
+
+This is now the new dataframe that we will plug into our Apriori algorithm.  Let's just make sure everything makes sense
+
+```{r}
+print( nrow(redbull_arules_wide))
+
+```
+```{r}
+
+print( ncol(redbull_arules_wide))
+
+```
+
+We have narrowed this set down to 14,046 transactions and 32 columns (30 brands + redbull + transaction id = 32)
+
+```{r}
+
+summary(redbull_arules_wide)
+
+head(redbull_arules_wide)
+
+str(redbull_arules_wide)
+
+# need to binarize the dataset
+
+redbull_arules_wide<-as.data.frame(colwise(as.logical)(redbull_arules_wide))
+
+redbull_arules_wide_2<- as.data.frame(redbull_arules_wide[,-1]) # remove transaction ID
+
+trans<-as(redbull_arules_wide_2, "transactions") # use this to contain redbull
+
+redbull_arules_wide_3<- as.data.frame(redbull_arules_wide_2[,-which(colnames(redbull_arules_wide_2)=='RED BULL')]) # remove transaction ID and redbull
+
+trans_2 <- as(redbull_arules_wide_3, "transactions") # use this for analysis without redbull
+
+
+
+```
+
+Let's try building out rules
+
+
+```{r}
+
+#which(colnames(redbull_arules_wide_2)=='RED BULL')
+
+#head(redbull_arules_wide_2)
+
+itemFrequencyPlot(trans_2)
+
+
+```
+
+So, it looks like we have decent supports among all of the redbull transactions for the variables.  Obviously, the store brand is the highest support just because of the amount of products that this brand offers in the categories that we selected for this analysis.
+
+Just as we saw in our previous graphical breakdowns, Monster has very high support as well as mountain dew and coke.  
+
+```{r}
+
+# these are all of the frequent itemsets purchases with redbull, redbull is not needed in the transaction information, because the transactions are all pre-filtered for Red Bull
+
+itemsets<-apriori(trans_2, parameter = list(target="frequent", supp=0.001, minlen=1))
+
+inspect(head(sort(itemsets), n=20))
+
+
+```
+
+Let's look at the quality of the rules that have been created by showing lift as well
+
+```{r}
+quality(itemsets)$lift <- interestMeasure(itemsets, measure="lift", trans = trans_2)
+inspect(head(sort(itemsets, by="lift"), n=20))
+
+```
+
+These rules are interesting. So, when we try to predict these rules occuring in the itemsets, these are the ones where our confidence is within expectation.  Remember that lift = confidence/expected confidence.  
+
+Notice that the lift shows that the important transactions start to move away from the 2-item transactions and really focus in on some of the very interesting-niche cases.  For instance, the first rule with a lift of 44 shows somebody purchasing Kraft products, Betty crocker, and clover valley occur very frequently in redbull transactions.  We may be able to surmise that this is somebody who is going to the store to pick up a few items to cook dinner or to stock up for the week.  They just so happen to pick up a red bull when they do this, and they do it more often than we would expect.  
+The second rule is interesting as well.  This look like folks who drop in, to pick up their breakfast for the week, but they also buy a redbull when they buy these items.  Let's hope that they are not putting the redbull and milk on their cereal.  
+
+In general, many of the remaining rules appear to show that folks really like junk food with their energy drinks.  They also tend to purchase multiple beverages together when they do this.  
+
+
+
+```{r}
+
+plot(head(sort(itemsets, by="lift"),10),
+  method="graph", control=list(cex=.7))
+
+
+```
+
+```{r}
+
+plot(head(sort(itemsets, by="support"),20),
+  method="graph", control=list(cex=.7))
+
+
+```
+
+
+Let's change the target a bit here to see if we notice any new rules coming out of the dataset
+
+
+```{r}
+itemsets_2 <- apriori(trans_2,parameter = list(minlen=1, supp=0.01, conf=0.01))
+
+itemsets_2_sorted <- sort(itemsets_2, by="support")
+inspect(itemsets_2_sorted)
+
+```
+
+These are the same rules that we had previously seen However, now, with the new paramters we return just 34 rules that we are interested in.  Most of the rules are still 2 item rules (everything with no item in antecedent(lhs) on the left is redbull + the consequence (rhs) item)
+
+
+
+
+
+```{r}
+
+itemsets_2_sorted = head(sort(itemsets_2, by="lift"),6)
+
+plot(itemsets_2_sorted, by="lift",
+  method="grouped", measure = 'confidence', shading = 'lift')
+
+#inspect(itemsets_2_sorted)
+
+itemsets_2_sorted = sort(itemsets_2, by="lift")
+
+
+inspect(itemsets_2_sorted)
+
+```
+
+
+
+It looks like the most interesting rule occurs when little debbies and 5-hour energy drinks are purchased with Red Bull.  This is a fascinating combo!  I am sure your pancrease, liver, and heart love you when you take this cocktail togther.
+
+From a business perspective, I wonder if we could somehow partner with 5-hour and little debbie to make "Energy Fuel Kits" or something.  Take a shot of energy now, then get a nice stream of energy throughout time from the Red Bull and amp up with Little Debbie for that afternoon boost!
+
+The interesting thing about these rules is that we would not necessarily have picked up on these relationships had we not used the Arules package to derive these itemsets.  Although our dataset was a bit contrived, it is interesting to see the results that we got back from the models.
+
+#### ALEX WIP START HERE ########################
+
+####All Transactions- Brand Level Rules
+
+We will now take our dataset that we originally tidy-ed up to create the best rules for the dataset.  However, due to the sheer number of brands, we will have to limit our dataset. Completing this analysis will allow us to see whether or not we think there are any meaningful combinations that we might want our product to somehow be paired with or which we would like to be placed next to in the store.
+
+Once again, we will only be evaluating partial transactions, but that is alright.  We do not need to be mutually exclusive or collectively exhaustive due to our line of questioning associated with this modeling exercise.
+
+
+```{r}
+
+
+#product_arules <- sqldf('Select * From BasketData Where DeptDesc In ("CANDY & SNACKS","FOOD","PERISHABLES")')
+
+```
+
+
+```{r}
+
+#summary(product_arules)
+
+
+#keepers<- c('TransactionID','Brand')
+
+#product_arules <- product_arules[keepers]
+
+
+#product_arules$present <- 1
+
+#redbull_arules_wide<- spread(redbull_arules, Brand, Present)
+
+#summary(product_arules)
+
+#product_arules<- sqldf('Select Distinct * From product_arules') # need to pull in only unique values for our transactions
+
+
+#product_arules_wide<- spread(product_arules, Brand, present)
+
+
+
+```
+
+
+
+
+# for this data, what is hte average transaction length?
+
+# Let's just filter for food, perishables and 
+
+
+
+
+```{r}
+# wonder if we see anything if we just leave redbull in the dataset
+
+
+#itemsets_3 <- apriori(trans,parameter = list(minlen=1, supp=0.01, conf=0.01))
+
+#itemsets_3_sorted <- sort(itemsets_3, by="support")
+#inspect(itemsets_3_sorted)
+
+### Commented out, because the rules just look weird...
+```
+
+**Cross Category Transactions**
+
+While there are a high number of transactions that occur just within the "Candy and Snack" department, it is important to understand the role that our products play in transactions occurring in the total store.  From a strategic standpoint, our ability to influence decision makers is reinforced when our transactions involving our product involve products from multiple departments.
+
+Obviously for the retailer, the larger the basket, the bigger value and profit delivered.  Therefore, we will mine records from all categories in the store.  Red Bull, as the target product, will be maintained at the Brand level, while the rest of the Candy/Snacks/Beverage Department it belongs to will be presented at the Category level, while the remainder of the store will be referenced at the Category level.
+
+```{r}
+
+#Filter negative Unit Transactions
+#remove any transaction where some part of it is negative
+
+Negative<-unique(filter(BasketData, Units<0)) %>% group_by(TransactionID) %>% summarise()
+
+BasketData<-filter(BasketData, !TransactionID %in% Negative)
+
+length(filter(BasketData, Units<0))
+
+#Reshape Data
+#We want Red Bull at the Brand Level
+RedBull<-filter(BasketData, Brand=="RED BULL")
+RedBull$Desc<-"RedBull"
+
+#Subtract it from rest of data set, so when we consolidate to class/dept level for remainder it isn't double counted
+BasketData2<-filter(BasketData, Brand!="RED BULL" & DeptDesc!="CANDY & SNACKS")
+BasketData2$Desc<-paste(BasketData2$DeptDesc)
+
+#We want rest of Candy and Snacks at ClassDesc Level
+BasketData3<-filter(BasketData, Brand!="RED BULL" & DeptDesc=="CANDY & SNACKS")
+BasketData3$Desc<-paste(BasketData3$ClassDesc)
+
+
+#Make 3 tables - one for the RB items, rest of Beverage/Snack, and everything else in store
+BasketSummary<-group_by(BasketData2, TransactionID, Desc) %>% dplyr::summarise(Present=1)
+
+
+BasketSummary2<-group_by(RedBull, TransactionID, Desc) %>% summarise(Present=1)
+BasketSummary3<-group_by(BasketData3, TransactionID, Desc) %>% summarise(Present=1)
+
+
+#Vertical combination
+BasketSummary<-rbind(BasketSummary, BasketSummary2, BasketSummary3)
+
+rm("BasketSummary2", "BasketSummary3", "BasketData2", "BasketData3")
+
+length(unique(BasketSummary$Desc))
+#Overall Basket most frequent product Desc
+print(group_by(BasketSummary, Desc) %>% summarise(Count=length(unique(TransactionID))) %>% arrange(-Count))
+
+#write our progress out to a CSV file
+write.csv(BasketSummary, "BasketSummary.csv")
+
+#This moves the data from being a long data table to being a wide sparse matrix as required for the 
+#arules library to work
+SummaryWide<-read.transactions("BasketSummary.csv", format="single", sep=",", cols=c("TransactionID", "Desc"))
+
+
+```
+
+
+```{r}
+
+summary(SummaryWide)
+colnames(SummaryWide)
+
+str(SummaryWide)
+
+```
+
+Steep drop off after 4 and 5 categories in terms of count of baskets with those items.  Probably will be useful in deciding max basket size of rules to mine for.
+
+```{r fig.width=8.5, fig.height=4}
+itemFrequencyPlot(SummaryWide, topN=15)
+```
+
+Food, Healthcare, Home Cleaning, Paper Products seem to be most frequent Items in Basket.
+
+I really want to target the Red Bull part for obvious reasons.
+
+```{r}
+RBBaskets<-subset(SummaryWide, items %in% "RedBull")
+RBFreq<-as.data.frame(itemFrequency(RBBaskets))
+RBFreq$Item<-row.names(RBFreq)
+
+RBFreq$Frequency<-comma(RBFreq$`itemFrequency(RBBaskets)`)
+RBFreq<-arrange(RBFreq, desc(Frequency))
+RBFreq
+```
+
+24% of Baskets with Red Bull also contained FOOD.
+18% of Baskets with Red Bull also contained PERISHABLES.
+17.6% of Baskets with Red Bull also had Dropship Carbonated Soft Drinks.
+
+
+```{r fig.height=8, fig.width=8}
+#mine associations
+itemsets<-apriori(SummaryWide, parameter = list(target="frequent", supp=0.001, minlen=1))
+inspect(head(sort(itemsets), n=50))
+
+
+quality(itemsets)$lift <- interestMeasure(itemsets, measure="lift", trans = SummaryWide)
+inspect(head(sort(itemsets, by="lift"), n=50))
+
+
+plot(head(sort(itemsets, by = "lift"), n=50), method = "graph", control=list(cex=.8))
+
+r <- apriori(SummaryWide, parameter = list(supp=0.00002, maxlen=5))
+inspect(head(sort(r, by="confidence"), n=50))
+plot(r)
+
+```
+
+```{r}
+#This is a subset of the rules to just show Red Bull related
+r_RB<-subset(r, subset=items %in% "RedBull")
+
+#r_RB<-subset(itemsets, subset=items %in% "RedBull")
+
+inspect((sort(r_RB, by="lift")))
+
+itemFrequencyPlot(items(r_RB), topN=20)
+
+plot(head(sort(r_RB, by="lift"), 20),
+  method="graph", control=list(cex=.7))
+
+```
+
+Low Support - about 50 transactions out of our 2MM set - but confidence is all >.8 and lift >1.  **Write Some More Stuff**
+
+Probably if we rearranged categories a little bit - maybe created more granularity in FOOD and consolidated some of the snack food (Crackers and Private Label Crackers) back together there could be some better insights.  Level of detail in the data is really important here.
+
+###Investigating Geolocation Connections of Baskets
+While there was only a single physical store configuration included in the data set - Traditional - and the time of the analysis limited to a single week - there is still many factors that could cause additional variation in the basket composition.  Any store-level differences, or differences in the shopper demographics, could be reflected in their preferences while shopping.
+
+
+
+###Summary and Conclusions
+
+###Next Steps
+While this analysis addressed a specific store format over a limited run of time, the other 75% of stores in the chain will need to be researched and analyzed in similar fashion.  The structure of this report introduces a good framework that can used for additional insight into other store formats.  
