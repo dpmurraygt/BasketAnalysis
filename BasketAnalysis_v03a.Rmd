@@ -5,6 +5,9 @@ output:
     html_document:
         keep_md: TRUE
 ---
+#**Executive Summary**
+   In this project we created a series of rules based on different categorical breakdowns of items purchased in conjunction with the Red Bull beverage product.  Overall, we found that baskets including Little Debbie snack cakes and 5-hr Energy to be interesting baskets as measured by confidence.  Additionally, we found that certain product categories tend to occur together, albeit with lower support than we might have wished for.  That being said, in future rules association creation, we might consider bringing in SKU and geolocation data in order to improve the model and create more actionable rules.  In addition to the redbull rules, we tried modeling out the entire dataset for all rules at the brand level.  This approach caused us to run out of available memory in R.  For future solves, we might consider taking random-stratified samples that allow us to maintain the same distributions in the training data.
+
 #**Introduction**
 
   This project seeks to use a dataset from a major retailer to create association rules for our product, RB.  Creating these associations may better help us determine whether or not to use partnerships or reward programs with our customers.  It may also help us develop customer segmentation models based upon variables such as items purchased, brands in the customer basket, and size of overall order.  Ultimately, knowing these pieces of information about our customers will help us better monetize our product, build brand-awareness, and increase brand acquisition for customers who may not have considered our product otherwise.
@@ -720,69 +723,6 @@ From a business perspective, I wonder if we could somehow partner with 5-hour an
 
 The interesting thing about these rules is that we would not necessarily have picked up on these relationships had we not used the Arules package to derive these itemsets.  Although our dataset was a bit contrived, it is interesting to see the results that we got back from the models.
 
-#### ALEX WIP START HERE ########################
-
-####All Transactions- Brand Level Rules
-
-We will now take our dataset that we originally tidy-ed up to create the best rules for the dataset.  However, due to the sheer number of brands, we will have to limit our dataset. Completing this analysis will allow us to see whether or not we think there are any meaningful combinations that we might want our product to somehow be paired with or which we would like to be placed next to in the store.
-
-Once again, we will only be evaluating partial transactions, but that is alright.  We do not need to be mutually exclusive or collectively exhaustive due to our line of questioning associated with this modeling exercise.
-
-
-```{r}
-
-
-#product_arules <- sqldf('Select * From BasketData Where DeptDesc In ("CANDY & SNACKS","FOOD","PERISHABLES")')
-
-```
-
-
-```{r}
-
-#summary(product_arules)
-
-
-#keepers<- c('TransactionID','Brand')
-
-#product_arules <- product_arules[keepers]
-
-
-#product_arules$present <- 1
-
-#redbull_arules_wide<- spread(redbull_arules, Brand, Present)
-
-#summary(product_arules)
-
-#product_arules<- sqldf('Select Distinct * From product_arules') # need to pull in only unique values for our transactions
-
-
-#product_arules_wide<- spread(product_arules, Brand, present)
-
-
-
-```
-
-
-
-
-# for this data, what is hte average transaction length?
-
-# Let's just filter for food, perishables and 
-
-
-
-
-```{r}
-# wonder if we see anything if we just leave redbull in the dataset
-
-
-#itemsets_3 <- apriori(trans,parameter = list(minlen=1, supp=0.01, conf=0.01))
-
-#itemsets_3_sorted <- sort(itemsets_3, by="support")
-#inspect(itemsets_3_sorted)
-
-### Commented out, because the rules just look weird...
-```
 
 **Cross Category Transactions**
 
@@ -912,7 +852,8 @@ plot(head(sort(r_RB, by="lift"), 20),
 
 Low Support - about 50 transactions out of our 2MM set - but confidence is all >.8 and lift >1.  **Write Some More Stuff**
 
-Probably if we rearranged categories a little bit - maybe created more granularity in FOOD and consolidated some of the snack food (Crackers and Private Label Crackers) back together there could be some better insights.  Level of detail in the data is really important here.
+
+It looks like if we rearranged the categories a tad and potentially added some additional details in the food area, our insights might be better from this dataset.  Additionally, if we consolidated the different food categories into higher level aggregations, we might find some better/more actionable rules.
 
 ###Investigating Geolocation Connections of Baskets
 While there was only a single physical store configuration included in the data set - Traditional - and the time of the analysis limited to a single week - there is still many factors that could cause additional variation in the basket composition.  Any store-level differences, or differences in the shopper demographics, could be reflected in their preferences while shopping.
