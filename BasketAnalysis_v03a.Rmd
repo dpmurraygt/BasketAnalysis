@@ -4,6 +4,11 @@ author: "Dennis Murray and Alex Deshowitz <br> Southern Methodist University- MS
 output: 
     html_document:
         keep_md: TRUE
+    toc: true
+    toc_float: 
+      collapsed: false
+    toc_depth: 2
+        
 ---
 #**Executive Summary**
    In this project we created a series of rules based on different categorical breakdowns of items purchased in conjunction with the Red Bull beverage product.  Overall, we found that baskets including Little Debbie snack cakes and 5-hr Energy to be interesting baskets as measured by confidence.  Additionally, we found that certain product categories tend to occur together, albeit with lower support than we might have wished for.  That being said, in future rules association creation, we might consider bringing in SKU and geolocation data in order to improve the model and create more actionable rules.  In addition to the redbull rules, we tried modeling out the entire dataset for all rules at the brand level.  This approach caused us to run out of available memory in R.  For future solves, we might consider taking random-stratified samples that allow us to maintain the same distributions in the training data.
@@ -28,6 +33,8 @@ The collection of this data occurs on an automated basis via the retailer's poin
 
 The 10.2MM records included in this analysis comprise a limited view of the retailer's business.  In fact, it is just one week of data, for a specific physical store format labeled as "Traditional" that comprises about 20% of the retailer's store count.  The data was aggregated from the SKU (UPC or Item Barcode level) to the Department/Class/Brand level.  While this removed the specficity of working at an item level, working at the item level would have reduced the support for anyone transaction type to a much lower level, with each Department/Class/Brand having possibly dozens to hundreds of UPCs available.  Thus, one part of our exploratory data analysis will be comprised of determining the appropriate level of detail to work from to mine the data rules for our analysis.
 
+It is important to also understand that in the context of the retailer, there could be significant variation in basket contents depending on time of the year and this week may not be representative of all time periods of the year.  A broader time sample would be required to properly gauge the variation throughout the year.
+
 ### Data Dictionary
 
 **TransactionID**: The transaction ID represents each unique transaction.  There is one record for every item in                         each transaction.  This is aggregated by the item (i.e- a transaction with 2 cans of Red Bull                         will have 1 record for redbull)
@@ -43,7 +50,7 @@ The 10.2MM records included in this analysis comprise a limited view of the reta
 ### Load All Packages
 ```{r load package,  results = ('hide'), message = FALSE, WARNING = FALSE}
 
-packages<- c('plyr','data.table','dplyr','arules','arulesViz','tidyr','ggplot2','magrittr', 'sqldf')
+packages<- c('plyr','data.table','dplyr','arules','arulesViz','tidyr','ggplot2','magrittr', 'sqldf', 'scales')
 
 sapply(packages, library, character.only = TRUE)
 
@@ -728,12 +735,21 @@ The interesting thing about these rules is that we would not necessarily have pi
 
 While there are a high number of transactions that occur just within the "Candy and Snack" department, it is important to understand the role that our products play in transactions occurring in the total store.  From a strategic standpoint, our ability to influence decision makers is reinforced when our transactions involving our product involve products from multiple departments.
 
-Obviously for the retailer, the larger the basket, the bigger value and profit delivered.  Therefore, we will mine records from all categories in the store.  Red Bull, as the target product, will be maintained at the Brand level, while the rest of the Candy/Snacks/Beverage Department it belongs to will be presented at the Category level, while the remainder of the store will be referenced at the Category level.
+Obviously for the retailer, the larger the basket, the bigger value and profit delivered.  Therefore, we will mine records from all categories in the store.  Red Bull, as the target product, will be maintained at the Brand level, while the rest of the Candy/Snacks/Beverage Department it belongs to will be presented at the Category level, while the remainder of the store will be referenced at the Category level.  An explanation of the products contained in each remaining grouping is included in the appendix.
 
 ```{r}
-
+#This entire section of code will reshape the data for the arules requiremments
 #Filter negative Unit Transactions
 #remove any transaction where some part of it is negative
+
+BasketData<-read.csv("Data/BasketData.csv")
+colnames(BasketData)<-c("TransactionID", "ClassDesc", "DeptDesc", "Brand", "Units")
+#Fix data that came with commas
+BasketData$Units<-as.numeric(gsub(",", "", as.character(BasketData$Units)))
+
+#Fix TransactionID to be non negative
+BasketData$TransactionID<-abs(BasketData$TransactionID)
+
 
 Negative<-unique(filter(BasketData, Units<0)) %>% group_by(TransactionID) %>% summarise()
 
@@ -768,9 +784,9 @@ BasketSummary<-rbind(BasketSummary, BasketSummary2, BasketSummary3)
 
 rm("BasketSummary2", "BasketSummary3", "BasketData2", "BasketData3")
 
-length(unique(BasketSummary$Desc))
+#length(unique(BasketSummary$Desc))
 #Overall Basket most frequent product Desc
-print(group_by(BasketSummary, Desc) %>% summarise(Count=length(unique(TransactionID))) %>% arrange(-Count))
+#print(group_by(BasketSummary, Desc) %>% summarise(Count=length(unique(TransactionID))) %>% arrange(-Count))
 
 #write our progress out to a CSV file
 write.csv(BasketSummary, "BasketSummary.csv")
@@ -778,29 +794,23 @@ write.csv(BasketSummary, "BasketSummary.csv")
 #This moves the data from being a long data table to being a wide sparse matrix as required for the 
 #arules library to work
 SummaryWide<-read.transactions("BasketSummary.csv", format="single", sep=",", cols=c("TransactionID", "Desc"))
-
-
 ```
 
 
 ```{r}
-
 summary(SummaryWide)
-colnames(SummaryWide)
-
-str(SummaryWide)
-
 ```
 
-Steep drop off after 4 and 5 categories in terms of count of baskets with those items.  Probably will be useful in deciding max basket size of rules to mine for.
+The summary function for a transaction object produces a somewhat useful summary of what the transaction looks like.  Most notable is the transaction count by number of items (in the case of our data, categories) in the basket.  Inspection finds more than 1 million single item baskets, with a significant drop in support (n) for any transaction with more than 5 items.  We can use this information to influence our decision point on the "length" parameter in our analysis.
 
 ```{r fig.width=8.5, fig.height=4}
 itemFrequencyPlot(SummaryWide, topN=15)
 ```
 
-Food, Healthcare, Home Cleaning, Paper Products seem to be most frequent Items in Basket.
+Food, Healthcare, Home Cleaning, Paper Products seem to be most frequent Items in Basket.  As a retailer, these would be considered "Trip Drivers" that might be expected to have a lower margin but very high volume.  As a retailer strategy, shoppers might be drawn to the store for these high-frequency, high volume products, and then add several higher priced, higher margin items to their cart.  The Trip Drivers typically have lower margins, as the retailer uses these products to compete with other retailers on price.
 
-I really want to target the Red Bull part for obvious reasons.
+As a manufacturer of a lower penetration item, we want to focus on what is sold alongside our product in the larger context of the store, and how it affects the retailer's overall store performance.
+
 
 ```{r}
 RBBaskets<-subset(SummaryWide, items %in% "RedBull")
@@ -815,52 +825,169 @@ RBFreq
 24% of Baskets with Red Bull also contained FOOD.
 18% of Baskets with Red Bull also contained PERISHABLES.
 17.6% of Baskets with Red Bull also had Dropship Carbonated Soft Drinks.
+16% of Baskets with Red Bull also had Health Care.
+13% of Baskets with Red Bull also had Home Cleaning.
 
+While these co-occurrences are interesting, our earlier frequency display showed us that the Food is in more than 20% of baskets overall, perishables were in more than 15% of baskets, and Home Cleaning, and Health Care were also high penetration items.  The association rules will help define what's novel and has significance in the basket set. 
+
+First we will examine some of the common association rules from the overall store, before focusing on just the transactions containing Red Bull.  The view of all association rules might help us understand what draws shoppers to the retailer overall and categories that the retailer may view as "Must Win" when considering their share of market versus the competition.
+
+Minimum Support was specified as 0.00002, which with our nearly 3 million transactions will provide us a required occurrence of 59 transactions for inclusion.  The minimum support was arrived through inspection of transactions with Red Bull - which occur at a much lower level oveall(<0.5% of all transactions), to attempt to locate some useful information about shopper behavior. We have also specified a maximum length of 5, since as noted above the significant fall-off in transaction count above 5 categories in the transaction.  
 
 ```{r fig.height=8, fig.width=8}
 #mine associations
-itemsets<-apriori(SummaryWide, parameter = list(target="frequent", supp=0.001, minlen=1))
-inspect(head(sort(itemsets), n=50))
+#itemsets<-apriori(SummaryWide, parameter = list(target="frequent", supp=0.001, minlen=1))
+#inspect(head(sort(itemsets), n=50))
 
 
-quality(itemsets)$lift <- interestMeasure(itemsets, measure="lift", trans = SummaryWide)
-inspect(head(sort(itemsets, by="lift"), n=50))
+#quality(itemsets)$lift <- interestMeasure(itemsets, measure="lift", trans = SummaryWide)
+#inspect(head(sort(itemsets, by="lift"), n=50))
 
 
-plot(head(sort(itemsets, by = "lift"), n=50), method = "graph", control=list(cex=.8))
+#plot(head(sort(itemsets, by = "lift"), n=50), method = "graph", control=list(cex=.8))
 
 r <- apriori(SummaryWide, parameter = list(supp=0.00002, maxlen=5))
-inspect(head(sort(r, by="confidence"), n=50))
+inspect(head(sort(r, by="lift"), n=50))
 plot(r)
 
 ```
 
+Among the association rules with the greatest lift, two categories appear to be the most frequent dependent item: Stationery and Health Care.  
+
+Given that our data is from the end of January, the highest lift basket contains Domestics, Holiday Events, Special Events, and Valentine's Candy, and predicts that basket, with 81% confidence will also contain Stationery.  This makes perfect sense - considering this could be a greeting card or include the Valentines that children would exchange at school.  In a similar transaction, the shopper has Domestics, Holiday Events, Home Decor, and Toys in their basket and also buys Stationery.
+
+Beauty Care is also a frequent occurrence as the dependent side of the basket.  The items on the left hand side suggest it could be a Mother shopping for household items, and for a small child in the house - with items like Infant/Toddler/Girls Clothing (or Diapers), Ladies Clothing, Housewares, and Health Care frequently a part of the basket.
+
+The Perishables category is shown as the dependent side of the basket for several basket configuration heavy with Food and Snack items - including Sweet Goods, the full Food department, Crackers and Carbonated Beverages.
+
+While somewhat anecdotal, it appears there are fewer high lift transactions found that mix baskets significant between Food items (including Candy, Snacks, Beverage, and Perishables) and Home Goods, Apparel, Home Cleaning and Health and Beauty.
+
+Now we can move on to look at the cross-category Baskets that specifically include Red Bull, by first subsetting baskets to force inclusion of Red Bull.
 ```{r}
 #This is a subset of the rules to just show Red Bull related
 r_RB<-subset(r, subset=items %in% "RedBull")
 
 #r_RB<-subset(itemsets, subset=items %in% "RedBull")
 
-inspect((sort(r_RB, by="lift")))
+#itemFrequency(items(r_RB))
 
 itemFrequencyPlot(items(r_RB), topN=20)
+```
 
-plot(head(sort(r_RB, by="lift"), 20),
-  method="graph", control=list(cex=.7))
+Among baskets including Red Bull, all of the baskets with at least two categories also include Food and Perishables.  This is a really interesting finding, and goes to define the mission our shopper may be on - they are buying some type of food (shelf stable), as well as a fresh perishable category item - which might include Milk, Bread, or Beer.  
+
+Beyond these two categories, frequency drops substantially.  While Paper Products are the 4th highest penetration category at the retailer, they are not present as frequently as food or perishables are in Red Bull baskets.
+
+Prior to reviewing the association rules, we might hypothesize that the basket includes Food, Perishables, and potentially one of the snack categories when Red Bull is purchased.
+
+```{r}
+inspect((sort(r_RB, by="lift")))
+
+
+#plot(head(sort(r_RB, by="lift"), 20), method="graph", control=list(cex=.7))
 
 ```
 
-Low Support - about 50 transactions out of our 2MM set - but confidence is all >.8 and lift >1.  **Write Some More Stuff**
+Our support aligns with our minimum possible transactional support, about 59 out of the total set of transactions.  Confidence for all of the rules created is above 80%.
 
+The highest lift association rules suggest that Perishables, Red Bull, and another item will lead to a purchase of an item from the Food Category.
 
-It looks like if we rearranged the categories a tad and potentially added some additional details in the food area, our insights might be better from this dataset.  Additionally, if we consolidated the different food categories into higher level aggregations, we might find some better/more actionable rules.
+As documented in the first section, the relationships with snack food is well established.  The third association rule might suggest a single serve snack or candy, an item from perishables like Bread or Milk, along with Red Bull leads to a purchase of Food.
+
+It looks like if we rearranged the categories a tad and potentially added some additional details in the food area, our insights might be better from this dataset.  Additionally, if we extract some of the different food categories into groupings, we might find some better/more actionable rules.  
 
 ###Investigating Geolocation Connections of Baskets
 While there was only a single physical store configuration included in the data set - Traditional - and the time of the analysis limited to a single week - there is still many factors that could cause additional variation in the basket composition.  Any store-level differences, or differences in the shopper demographics, could be reflected in their preferences while shopping.
 
+```{r}
+#Bring in the transaction to store translation
+TransStore<-read.csv("Data/TransByStore.txt")
+colnames(TransStore)<-c("TransID", "Date", "Time", "Store", "StoreDiv", "State", "Latitude", "Longitude", 
+                        "SqFt", "Sales", "Units")
 
+#Subset out the Red Bull Transactions
+RBTrans<-filter(BasketSummary, Desc=="RedBull")
+
+RBTrans2<-filter(BasketSummary, TransactionID %in% RBTrans$TransactionID)
+
+RBWide<-spread(RBTrans, Desc, Present, fill = FALSE)
+
+TransDF<-as.data.frame(SummaryWide)
+
+#write.csv(BasketSummary, "RBBasketSummary.csv")
+
+#This moves the data from being a long data table to being a wide sparse matrix as required for the 
+#arules library to work
+#SummaryWide<-read.transactions("RBBasketSummary.csv", format="single", sep=",", cols=c("TransactionID", "Desc"))
+
+
+#match the transaction to store
+
+
+#Cluster? based on Transaction contents?
+
+```
 
 ###Summary and Conclusions
 
+
 ###Next Steps
 While this analysis addressed a specific store format over a limited run of time, the other 75% of stores in the chain will need to be researched and analyzed in similar fashion.  The structure of this report introduces a good framework that can used for additional insight into other store formats.  
+
+Another product of this analysis could lead to segmentation of customers, based on the trip profiles.  If the retailer has the ability to tie together multiple transactions of a customer across days, locations and understand shopping missions for the same shopper.  
+
+
+####Appendix: Description of Item Categories in Full Data Set
+ACCESSORIES: Includes hats, jewelry, outerwear, and other miscellaneous clothing items.
+BEAUTY CARE: Soap, Shampoo, Lotions, and fragrances.
+DOMESTICS: Home furnishings including bedding, floor coverings, and home accessories.
+FOOD: Outside of Candy and Snacks, FOOD is the most frequently observed basket item.  The department includes canned, frozen, and all other shelf-stable food except for snack foods.
+HARDWARE: Motor oil, auto accessories, and tools.
+HEALTH CARE: All over the counter medication, dental care, and nutritional supplements.
+HOLIDAY EVENTS: Seasonal non-food items, including home furnishings and costumes.
+HOME CLEANING: All home cleaning products, including dish care, floor care, laundry care, and insecticides.
+HOME DECOR: Decorative items, including baskets, clocks, and candles.
+HOUSEWARE: Cookware, mops, brooms, and kitchen gadgets.
+INF/TODDLERS/GIRLS: Diapers, Wipes, Baby to Toddler Clothing (both genders) and girls' clothing.
+LADIES: All women's clothing.
+MENS/BOYS: All Men and Boys' clothing.
+PAPER PRODUCTS: Paper towels, toilet paper, paper plates, cups, and bowls, aluminum foil, plastic bags, and garbage bags.
+PERISHABLES: Fresh food including bread, milk, cheese, and eggs, ice, as well as Beer and Wine.
+PET: All dog and cat food, treats, accessories and cat litter.
+SHOES: All footwear for all ages and genders.
+SLEEPWEAR/INTIMATES/SOCKS: Socks, undergarments, and pajamas.
+STATIONERY: Greeting cards, school supplies, periodicals, books, and fireworks.
+SUMMER/SPECIAL EVENTS: Outdoor furniture, fans, beach goods, grills.
+SUNDRIES: Batteries, gift cards, DVDs, video games, and other small electronics.
+TOBACCO: Cigarettes and smokeless tobacco, as well as electronic cigarettes.
+TOYS: All toys.
+
+Items from the Candy & Snacks department have been maintained at the Category Level:
+CARBONATED DRINKS - DROPSHIP: Carbonated beverages (Soda or Pop, depending on your region of the country) that are delivered directly to the store.  This would encompass most major brands, like Coke and Pepsi.
+SALTY SNACKS - DROPSHIP: This would include chips and pretzels that are delivered directly to the store, from brands like Frito-Lay.
+CHOCOLATE CANDY: Non-seasonal chocolate candy.
+SALTY SNACKS: Salty snacks, but from brands serviced through the retailer's warehouse.
+NON-CHOCOLATE CANDY: Non-chocolate candy.
+SINGLE SERVE: Single serve candy.  This would primarily be the packages sold near a checkout as an impulse purchase.
+NON-CARBONATED DROP SHIP: Teas, Ready-to-Drink Coffee, and Energy drinks from major brands delivered directly to the store. While Red Bull is normally part of this category, it is being excluded for purposes of examining more closely.
+GUM/MINTS: Gum and Mints.
+COOKIES: Cookies managed through the retailer's warehouse.
+CRACKERS: Crackers managed through the retailer's warehouse.
+SWEET GOODS-DROPSHIP: Doughnuts, cakes and pastries delivered direct to the store.
+WATER: Water managed through the retailer's warehouse.
+DSD WATER: Water delivered diretly to the store.
+COOKIES PRIVATE BRAND: Store brand ("Private Label" or "White Label") Cookies.
+NUTS: All types of peanuts and tree nuts.
+NON CHOC CANDY PRIV BRAND: All types of candy with store or private label.
+CARBONATED BEVERAGES: Retailer warehouse managed carbonated soft drinks (Pop, Soda, or CSD)
+CANDY/SNACK/BEV $1: Items from these categories priced at $1.
+SALTY SNACK REGIONAL DS: Direct shipped to store salty snacks from non-national brands.
+CHRISTMAS CANDY: Seasonal (Christmas) Candy.
+DRINK MIX: Powdered and concentrated liquid drink mixes.
+CRACKERS PRIVATE BRAND: Store brand crackers.
+HALLOWEEN CANDY: Seasonal (Halloween) candy.
+NON-CARBONATED WHSE: Beverages including tea, ready-to-drink coffee, and energy drinks managed through the retailer's warehouse.
+EASTER CANDY: Seasonal (Easter) candy.
+HISPANIC: Snack items oriented towards the Hispanic consumer.
+VALENTINES CANDY: Seasonal (Valentine's Day) Candy.
+8/$1 and 4/$1: Items eligible for bundled price deal.
