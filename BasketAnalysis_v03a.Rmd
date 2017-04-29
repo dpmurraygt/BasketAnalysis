@@ -35,6 +35,8 @@ The 10.2MM records included in this analysis comprise a limited view of the reta
 
 It is important to also understand that in the context of the retailer, there could be significant variation in basket contents depending on time of the year and this week may not be representative of all time periods of the year.  A broader time sample would be required to properly gauge the variation throughout the year.
 
+It is suspected that we may uncover several different shopping missions.  Based on prior knowledge, we might expect that Tobacco, and snack food will be purchased alongside the targeted brand, Red Bull.  Other beverage items, like water, are also known to be purchased alongside of Red Bull.
+
 ### Data Dictionary
 
 **TransactionID**: The transaction ID represents each unique transaction.  There is one record for every item in                         each transaction.  This is aggregated by the item (i.e- a transaction with 2 cans of Red Bull                         will have 1 record for redbull)
@@ -848,7 +850,7 @@ Minimum Support was specified as 0.00002, which with our nearly 3 million transa
 
 r <- apriori(SummaryWide, parameter = list(supp=0.00002, maxlen=5))
 inspect(head(sort(r, by="lift"), n=50))
-plot(r)
+#plot(r)
 
 ```
 
@@ -902,42 +904,145 @@ While there was only a single physical store configuration included in the data 
 ```{r}
 #Bring in the transaction to store translation
 TransStore<-read.csv("Data/TransByStore.txt")
-colnames(TransStore)<-c("TransID", "Date", "Time", "Store", "StoreDiv", "State", "Latitude", "Longitude", 
+colnames(TransStore)<-c("TransactionID", "Date", "Time", "Store", "StoreDiv", "State", "Latitude", "Longitude", 
                         "SqFt", "Sales", "Units")
+TransStore$TransactionID<- -(TransStore$TransactionID)
 
 #Subset out the Red Bull Transactions
 RBTrans<-filter(BasketSummary, Desc=="RedBull")
 
 RBTrans2<-filter(BasketSummary, TransactionID %in% RBTrans$TransactionID)
 
-RBWide<-spread(RBTrans, Desc, Present, fill = FALSE)
+RBWide<-spread(RBTrans2, Desc, Present, fill = FALSE)
 
-TransDF<-as.data.frame(SummaryWide)
+#Rule A: Crackers, Paper Products, Perishables, RedBull ->FOOD
+RuleATrans<-filter(RBWide, CRACKERS==1 & `PAPER PRODUCTS`==1 & PERISHABLES==1 & RedBull==1 & FOOD==1)
+RuleATrans$Rule<-"A"
 
-#write.csv(BasketSummary, "RBBasketSummary.csv")
-
-#This moves the data from being a long data table to being a wide sparse matrix as required for the 
-#arules library to work
-#SummaryWide<-read.transactions("RBBasketSummary.csv", format="single", sep=",", cols=c("TransactionID", "Desc"))
-
-
-#match the transaction to store
+#Rule B: Crackers PRIVATE BRAND, Perishables, RedBull ->FOOD
+RuleBTrans<-filter(RBWide, `CRACKERS PRIVATE BRAND` ==1 & PERISHABLES==1 & RedBull==1 & FOOD==1)
+RuleBTrans$Rule<-"B"
 
 
-#Cluster? based on Transaction contents?
+#Rule C: Candy/Snack/Bev $1, Perishables, RedBull ->FOOD
+RuleCTrans<-filter(RBWide, `CANDY/SNACK/BEV $1` ==1 & PERISHABLES==1 & RedBull==1 & FOOD==1)
+RuleCTrans$Rule<-"C"
+
+
+#Rule D: Chocolate Candy, Paper Products, Perishables, RedBull ->FOOD
+RuleDTrans<-filter(RBWide, `CHOCOLATE CANDY`==1 & `PAPER PRODUCTS`==1 & PERISHABLES==1 & RedBull==1 & FOOD==1)
+RuleDTrans$Rule<-"D"
+
+
+#Rule E: PAPER PRODUCTS, PERISHABLES, SALTY SNACKS, RedBull ->FOOD
+RuleETrans<-filter(RBWide, `SALTY SNACKS`==1 & `PAPER PRODUCTS`==1 & PERISHABLES==1 & RedBull==1 & FOOD==1)
+RuleETrans$Rule<-"E"
+
+
+#Rule F: PAPER PRODUCTS, PERISHABLES, SALTY SNACKS, RedBull ->FOOD
+RuleFTrans<-filter(RBWide, COOKIES==1 & `HEALTH CARE`==1 & PERISHABLES==1 & RedBull==1 & FOOD==1)
+RuleFTrans$Rule<-"F"
+
+#Rule G: PAPER PRODUCTS, PERISHABLES, SALTY SNACKS, RedBull ->FOOD
+RuleGTrans<-filter(RBWide, COOKIES==1 & `SALTY SNACKS`==1 & PERISHABLES==1 & RedBull==1 & FOOD==1)
+RuleGTrans$Rule<-"G"
+
+#Rule H: PAPER PRODUCTS, PERISHABLES, SALTY SNACKS, RedBull ->FOOD
+RuleHTrans<-filter(RBWide, `SALTY SNACKS`==1 & `BEAUTY CARE`==1 & PERISHABLES==1 & RedBull==1 & FOOD==1)
+RuleHTrans$Rule<-"H"
+
+#Rule I: PAPER PRODUCTS, PERISHABLES, SALTY SNACKS, RedBull ->FOOD
+RuleITrans<-filter(RBWide, `CARBONATED DRINK-DROPSHIP`==1 & CRACKERS==1 & PERISHABLES==1 & RedBull==1 & FOOD==1)
+RuleITrans$Rule<-"I"
+
+
+#Rule J: PAPER PRODUCTS, PERISHABLES, SALTY SNACKS, RedBull ->FOOD
+RuleJTrans<-filter(RBWide, `SALTY SNACKS-DROPSHIP`==1 & CRACKERS==1 & PERISHABLES==1 & RedBull==1 & FOOD==1)
+RuleJTrans$Rule<-"J"
+
+#Vertically Bind Rules A-J
+TargetTrans<-rbind(RuleATrans, RuleBTrans, RuleCTrans, RuleDTrans, RuleETrans, RuleFTrans, RuleGTrans,
+                   RuleHTrans, RuleITrans, RuleJTrans)
+
+#remove the contents of transactions but keep the rule name and the transaction id
+TargetTrans<-TargetTrans[c(1,53)]
+#length(unique(TargetTrans$TransactionID))
+
+#match TransactionID back to attributes of the transaction
+TransWithAttribute<-inner_join(TargetTrans, TransStore, by="TransactionID")
+
+#Fix the date field to be a date
+TransWithAttribute$Date<-as.Date(TransWithAttribute$Date, "%m/%d/%y")
+
+TransWithAttribute$DayOfWeek<-weekdays(TransWithAttribute$Date)
+
+group_by(TransWithAttribute, Rule) %>% summarise(StoreCount=length(unique(Store)), TransCount=length(unique(TransactionID)), TransPerStore=TransCount/StoreCount) %>% arrange(-TransPerStore)
 
 ```
 
-###Summary and Conclusions
+We've assigned each of the top 10 transactions based on lift to a letter - with A being the highest lift rule - and then matched the attributes of the transaction to see if some of the metadata of the transaction helps understand if there's additional patterns to the transactions.  Rule J, for example, (Association Rule: {PAPER PRODUCTS, PERISHABLES, SALTY SNACKS, RedBull} ->FOOD) occurred in 74 different stores, covering 78 different transactions.  
 
+Rule E had the most frequent occurrence per store, at 1.13 per store (at least within the set of stores where the transaction actually occurred).  
+```{r}
+group_by(TransWithAttribute, Store) %>% summarise(RuleCount=length(unique(Rule)), TransCount=length(unique(TransactionID)), TransPerRule=TransCount/RuleCount) %>% arrange(-TransCount)
+
+
+```
+While it appears that each trasnsaction rule didn't occur at any one store many times, there were stores that had several different transaction rules happen (althought there may have been 1 transaction that could satisfy several of the rules, given our constraints of maximum rule length, confidence and support). Store 7962 did see 9 of the 10 different rules applied in 8 unique transactions.  
+
+We can attempt to use K Means Clustering to see if there's any grouping that might be made based on the occurrence of different rule sets within a store.  We've aribitrarily elected to start with a value of 3 clusters, which might yield a low/medium/high grouping for 
+
+```{r}
+set.seed(4636)
+TransWithAttribute$Present<-1
+
+
+ClusteringMatrix<-group_by(TransWithAttribute, Store, Rule) %>% summarise(Transactions=sum(Present)) %>% spread(Rule, Transactions, fill=0)
+ClusteringMatrix$TotalTrans<-rowSums(ClusteringMatrix[c(2:11)])
+
+ClusterStoreOnTrans<-kmeans(as.matrix(ClusteringMatrix[2:11]), 3)
+
+ClusteringMatrix$cluster<-ClusterStoreOnTrans$cluster
+print(ClusteringMatrix)
+```
+
+It appears that the clustering has placed nearly all stores that satisfied Rule D ({Chocolate Candy, Paper Products, Perishables, RedBull}->FOOD) into the cluster "1".  It might be hypothesized that these stores could take advantage of an occasion-based display within the store that suggests items from these categories together.  
+
+Meanwhile, Stores that mostly satisfy Rule C ({Candy/Snack/Bev $1, Perishables, RedBull} ->FOOD) were aggregated to Cluster 3. The contents of this basket might suggest a "Snack" occasion for most of the items, perhaps paired with a purchase of something for a meal to be constructed later.  The perishable could represent Beer or Wine as well.
+
+The remaining cluster, shown as 2 in the table, seems to be stores that had no transactions to satisfy either transaction Rule C nor Rule D, and the rules satisfied seem to be more randomly distributed.
+
+
+```{r fig.width=8.5, fig.height=8}
+#rule by day of the week
+TransWithAttribute$DayOfWeek<-weekdays(TransWithAttribute$Date)
+TransWithAttribute$DayOfWeek<-as.factor(TransWithAttribute$DayOfWeek)
+levels(TransWithAttribute$DayOfWeek)
+TransWithAttribute$DayOfWeek<-factor(TransWithAttribute$DayOfWeek, levels(TransWithAttribute$DayOfWeek)[c(2, 6, 7, 5, 1,3, 4)])
+                                     
+#                                     ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday",
+#                                                                               "Saturday", "Sunday"))
+
+ggplot(TransWithAttribute, aes(x=DayOfWeek))+geom_bar()+facet_wrap(~Rule) + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+
+Rule H ({PAPER PRODUCTS, PERISHABLES, SALTY SNACKS, RedBull}->FOOD) has an interesting pattern, with a frequency on Saturday of more than 2x the occurences then any other day of the week.  An observer might guess this pattern corresponds to a "Party" occasion, especially given the proximity of the range of dates to the Super Bowl - that shoppers were stocking up on Paper Products (including paper plates and napkins), Perishables (which includes the Beer category), Salty Snacks, and Red Bull, which predicted that some item from the Food Category would also be in the basket. 
+
+###Summary and Conclusions
+The rules uncovered in this analysis seem to follow some of the researchers prior understanding of shopping patterns in the retailer, as well as for the Red Bull brand overall.  However, specific to the retailer and the dates researched, several additional baskets were uncovered.
+
+Knowledge gained from this research will be discussed with the retailer based on a broader research piece following a similar format.
 
 ###Next Steps
 While this analysis addressed a specific store format over a limited run of time, the other 75% of stores in the chain will need to be researched and analyzed in similar fashion.  The structure of this report introduces a good framework that can used for additional insight into other store formats.  
 
+While the level of detail presented in this document has proved useful, there are additional insights that might be found through revision of the "Description" field to focus additional attention on some high frequency categories, and less detail to some of the subcategories of the Candy, Snack and Beverage category through consolidation.  Within the Red Bull brand, differences of purchases of Multipacks and Single serve may also be useful.
+
 Another product of this analysis could lead to segmentation of customers, based on the trip profiles.  If the retailer has the ability to tie together multiple transactions of a customer across days, locations and understand shopping missions for the same shopper.  
 
 
-####Appendix: Description of Item Categories in Full Data Set
+###Appendix: Description of Item Categories in Full Data Set
 ACCESSORIES: Includes hats, jewelry, outerwear, and other miscellaneous clothing items.
 BEAUTY CARE: Soap, Shampoo, Lotions, and fragrances.
 DOMESTICS: Home furnishings including bedding, floor coverings, and home accessories.
