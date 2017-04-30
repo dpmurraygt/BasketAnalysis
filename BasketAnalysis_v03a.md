@@ -42,7 +42,7 @@ It is suspected that we may uncover several different shopping missions.  Based 
 ### Load All Packages
 
 ```r
-packages<- c('plyr','data.table','dplyr','arules','arulesViz','tidyr','ggplot2','magrittr', 'sqldf', 'scales')
+packages<- c('plyr','data.table','dplyr','arules','arulesViz','tidyr','ggplot2','magrittr', 'sqldf', 'scales', 'jpeg')
 
 sapply(packages, library, character.only = TRUE)
 ```
@@ -1092,7 +1092,7 @@ itemsets<-apriori(trans_2, parameter = list(target="frequent", supp=0.001, minle
 ## creating transaction tree ... done [0.00s].
 ## checking subsets of size 1 2 3 done [0.00s].
 ## writing ... [233 set(s)] done [0.00s].
-## creating S4 object  ... done [0.01s].
+## creating S4 object  ... done [0.00s].
 ```
 
 ```r
@@ -1319,7 +1319,16 @@ inspect(itemsets_2_sorted)
 ## [34] {}              => {CLOVER VALLEY} 0.13178129 0.13178129 1.000000
 ```
 
+It looks like this didn't render well, let's just go ahead and read in a jpeg file
 
+
+```r
+pic <-readJPEG('pic_v01.jpg')
+plot(1:2, type = 'n')
+rasterImage(pic, 1, 1, 2, 2)
+```
+
+![](BasketAnalysis_v03a_files/figure-html/unnamed-chunk-48-1.png)<!-- -->
 
 It looks like the most interesting rule occurs when little debbies and 5-hour energy drinks are purchased with Red Bull.  This is a fascinating combo!  I am sure your pancrease, liver, and heart love you when you take this cocktail togther.
 
@@ -1449,7 +1458,7 @@ The summary function for a transaction object produces a somewhat useful summary
 itemFrequencyPlot(SummaryWide, topN=15)
 ```
 
-![](BasketAnalysis_v03a_files/figure-html/unnamed-chunk-50-1.png)<!-- -->
+![](BasketAnalysis_v03a_files/figure-html/unnamed-chunk-51-1.png)<!-- -->
 
 Food, Healthcare, Home Cleaning, Paper Products seem to be most frequent Items in Basket.  As a retailer, these would be considered "Trip Drivers" that might be expected to have a lower margin but very high volume.  As a retailer strategy, shoppers might be drawn to the store for these high-frequency, high volume products, and then add several higher priced, higher margin items to their cart.  The Trip Drivers typically have lower margins, as the retailer uses these products to compete with other retailers on price.
 
@@ -1569,9 +1578,9 @@ r <- apriori(SummaryWide, parameter = list(supp=0.00002, maxlen=5))
 ## Absolute minimum support count: 58 
 ## 
 ## set item appearances ...[0 item(s)] done [0.00s].
-## set transactions ...[54 item(s), 2928914 transaction(s)] done [0.57s].
-## sorting and recoding items ... [52 item(s)] done [0.09s].
-## creating transaction tree ... done [3.11s].
+## set transactions ...[54 item(s), 2928914 transaction(s)] done [0.70s].
+## sorting and recoding items ... [52 item(s)] done [0.11s].
+## creating transaction tree ... done [2.97s].
 ## checking subsets of size 1 2 3 4 5
 ```
 
@@ -1582,9 +1591,9 @@ r <- apriori(SummaryWide, parameter = list(supp=0.00002, maxlen=5))
 ```
 
 ```
-##  done [0.87s].
-## writing ... [9041 rule(s)] done [0.03s].
-## creating S4 object  ... done [0.42s].
+##  done [0.66s].
+## writing ... [9041 rule(s)] done [0.02s].
+## creating S4 object  ... done [0.37s].
 ```
 
 ```r
@@ -1821,7 +1830,7 @@ r_RB<-subset(r, subset=items %in% "RedBull")
 itemFrequencyPlot(items(r_RB), topN=20)
 ```
 
-![](BasketAnalysis_v03a_files/figure-html/unnamed-chunk-53-1.png)<!-- -->
+![](BasketAnalysis_v03a_files/figure-html/unnamed-chunk-54-1.png)<!-- -->
 
 Among baskets including Red Bull, all of the baskets with at least two categories also include Food and Perishables.  This is a really interesting finding, and goes to define the mission our shopper may be on - they are buying some type of food (shelf stable), as well as a fresh perishable category item - which might include Milk, Bread, or Beer.  
 
@@ -2098,7 +2107,7 @@ TransWithAttribute$DayOfWeek<-factor(TransWithAttribute$DayOfWeek, levels(TransW
 ggplot(TransWithAttribute, aes(x=DayOfWeek))+geom_bar()+facet_wrap(~Rule) + theme(axis.text.x = element_text(angle = 90, hjust = 1))
 ```
 
-![](BasketAnalysis_v03a_files/figure-html/unnamed-chunk-58-1.png)<!-- -->
+![](BasketAnalysis_v03a_files/figure-html/unnamed-chunk-59-1.png)<!-- -->
 
 Rule H ({PAPER PRODUCTS, PERISHABLES, SALTY SNACKS, RedBull}->FOOD) has an interesting pattern, with a frequency on Saturday of more than 2x the occurences then any other day of the week.  An observer might guess this pattern corresponds to a "Party" occasion, especially given the proximity of the range of dates to the Super Bowl - that shoppers were stocking up on Paper Products (including paper plates and napkins), Perishables (which includes the Beer category), Salty Snacks, and Red Bull, which predicted that some item from the Food Category would also be in the basket. 
 
