@@ -52,7 +52,7 @@ It is suspected that we may uncover several different shopping missions.  Based 
 ### Load All Packages
 ```{r load package,  results = ('hide'), message = FALSE, WARNING = FALSE}
 
-packages<- c('plyr','data.table','dplyr','arules','arulesViz','tidyr','ggplot2','magrittr', 'sqldf', 'scales')
+packages<- c('plyr','data.table','dplyr','arules','arulesViz','tidyr','ggplot2','magrittr', 'sqldf', 'scales', 'jpeg')
 
 sapply(packages, library, character.only = TRUE)
 
@@ -724,7 +724,15 @@ inspect(itemsets_2_sorted)
 
 ```
 
+It looks like this didn't render well, let's just go ahead and read in a jpeg file
 
+```{r}
+
+pic <-readJPEG('pic_v01.jpg')
+plot(1:2, type = 'n')
+rasterImage(pic, 1, 1, 2, 2)
+
+```
 
 It looks like the most interesting rule occurs when little debbies and 5-hour energy drinks are purchased with Red Bull.  This is a fascinating combo!  I am sure your pancrease, liver, and heart love you when you take this cocktail togther.
 
