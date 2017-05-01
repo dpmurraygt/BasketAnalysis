@@ -1578,9 +1578,9 @@ r <- apriori(SummaryWide, parameter = list(supp=0.00002, maxlen=5))
 ## Absolute minimum support count: 58 
 ## 
 ## set item appearances ...[0 item(s)] done [0.00s].
-## set transactions ...[54 item(s), 2928914 transaction(s)] done [0.70s].
-## sorting and recoding items ... [52 item(s)] done [0.11s].
-## creating transaction tree ... done [2.97s].
+## set transactions ...[54 item(s), 2928914 transaction(s)] done [0.58s].
+## sorting and recoding items ... [52 item(s)] done [0.08s].
+## creating transaction tree ... done [2.85s].
 ## checking subsets of size 1 2 3 4 5
 ```
 
@@ -1591,9 +1591,9 @@ r <- apriori(SummaryWide, parameter = list(supp=0.00002, maxlen=5))
 ```
 
 ```
-##  done [0.66s].
-## writing ... [9041 rule(s)] done [0.02s].
-## creating S4 object  ... done [0.37s].
+##  done [0.67s].
+## writing ... [9041 rule(s)] done [0.01s].
+## creating S4 object  ... done [0.38s].
 ```
 
 ```r
@@ -2126,55 +2126,104 @@ Another product of this analysis could lead to segmentation of customers, based 
 
 ###Appendix: Description of Item Categories in Full Data Set
 ACCESSORIES: Includes hats, jewelry, outerwear, and other miscellaneous clothing items.
+
 BEAUTY CARE: Soap, Shampoo, Lotions, and fragrances.
+
 DOMESTICS: Home furnishings including bedding, floor coverings, and home accessories.
+
 FOOD: Outside of Candy and Snacks, FOOD is the most frequently observed basket item.  The department includes canned, frozen, and all other shelf-stable food except for snack foods.
+
 HARDWARE: Motor oil, auto accessories, and tools.
+
 HEALTH CARE: All over the counter medication, dental care, and nutritional supplements.
+
 HOLIDAY EVENTS: Seasonal non-food items, including home furnishings and costumes.
+
 HOME CLEANING: All home cleaning products, including dish care, floor care, laundry care, and insecticides.
+
 HOME DECOR: Decorative items, including baskets, clocks, and candles.
+
 HOUSEWARE: Cookware, mops, brooms, and kitchen gadgets.
+
 INF/TODDLERS/GIRLS: Diapers, Wipes, Baby to Toddler Clothing (both genders) and girls' clothing.
+
 LADIES: All women's clothing.
+
 MENS/BOYS: All Men and Boys' clothing.
+
 PAPER PRODUCTS: Paper towels, toilet paper, paper plates, cups, and bowls, aluminum foil, plastic bags, and garbage bags.
+
 PERISHABLES: Fresh food including bread, milk, cheese, and eggs, ice, as well as Beer and Wine.
+
 PET: All dog and cat food, treats, accessories and cat litter.
+
 SHOES: All footwear for all ages and genders.
+
 SLEEPWEAR/INTIMATES/SOCKS: Socks, undergarments, and pajamas.
+
 STATIONERY: Greeting cards, school supplies, periodicals, books, and fireworks.
+
 SUMMER/SPECIAL EVENTS: Outdoor furniture, fans, beach goods, grills.
+
 SUNDRIES: Batteries, gift cards, DVDs, video games, and other small electronics.
+
 TOBACCO: Cigarettes and smokeless tobacco, as well as electronic cigarettes.
+
 TOYS: All toys.
 
 Items from the Candy & Snacks department have been maintained at the Category Level:
 CARBONATED DRINKS - DROPSHIP: Carbonated beverages (Soda or Pop, depending on your region of the country) that are delivered directly to the store.  This would encompass most major brands, like Coke and Pepsi.
+
 SALTY SNACKS - DROPSHIP: This would include chips and pretzels that are delivered directly to the store, from brands like Frito-Lay.
+
 CHOCOLATE CANDY: Non-seasonal chocolate candy.
+
 SALTY SNACKS: Salty snacks, but from brands serviced through the retailer's warehouse.
+
 NON-CHOCOLATE CANDY: Non-chocolate candy.
+
 SINGLE SERVE: Single serve candy.  This would primarily be the packages sold near a checkout as an impulse purchase.
+
 NON-CARBONATED DROP SHIP: Teas, Ready-to-Drink Coffee, and Energy drinks from major brands delivered directly to the store. While Red Bull is normally part of this category, it is being excluded for purposes of examining more closely.
+
 GUM/MINTS: Gum and Mints.
+
 COOKIES: Cookies managed through the retailer's warehouse.
+
 CRACKERS: Crackers managed through the retailer's warehouse.
+
 SWEET GOODS-DROPSHIP: Doughnuts, cakes and pastries delivered direct to the store.
+
 WATER: Water managed through the retailer's warehouse.
+
 DSD WATER: Water delivered diretly to the store.
+
 COOKIES PRIVATE BRAND: Store brand ("Private Label" or "White Label") Cookies.
+
 NUTS: All types of peanuts and tree nuts.
+
 NON CHOC CANDY PRIV BRAND: All types of candy with store or private label.
+
 CARBONATED BEVERAGES: Retailer warehouse managed carbonated soft drinks (Pop, Soda, or CSD)
+
 CANDY/SNACK/BEV $1: Items from these categories priced at $1.
+
 SALTY SNACK REGIONAL DS: Direct shipped to store salty snacks from non-national brands.
+
 CHRISTMAS CANDY: Seasonal (Christmas) Candy.
+
 DRINK MIX: Powdered and concentrated liquid drink mixes.
+
 CRACKERS PRIVATE BRAND: Store brand crackers.
+
 HALLOWEEN CANDY: Seasonal (Halloween) candy.
+
 NON-CARBONATED WHSE: Beverages including tea, ready-to-drink coffee, and energy drinks managed through the retailer's warehouse.
+
 EASTER CANDY: Seasonal (Easter) candy.
+
 HISPANIC: Snack items oriented towards the Hispanic consumer.
+
 VALENTINES CANDY: Seasonal (Valentine's Day) Candy.
+
 8/$1 and 4/$1: Items eligible for bundled price deal.
